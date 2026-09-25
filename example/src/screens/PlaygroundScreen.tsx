@@ -5,8 +5,11 @@ import {
   TradingChart,
   defaultDarkTheme,
   defaultLightTheme,
+  formatPrice,
   useTradingChartController,
   type ChartTheme,
+  type CrosshairChange,
+  type CrosshairMode,
 } from 'react-native-fast-chart';
 import { generateCandles } from 'react-native-fast-chart/testing';
 import { DebugOverlay } from '../components/DebugOverlay';
@@ -51,7 +54,18 @@ export function PlaygroundScreen({
     []
   );
   const [debug, setDebug] = useState(false);
-  const config = useMemo(() => ({ debug: { profiling: debug } }), [debug]);
+  const [crosshairMode, setCrosshairMode] = useState<CrosshairMode>('hold');
+  const [utc, setUtc] = useState(false);
+  // Updated only when the crosshair changes bar (never per frame).
+  const [inspected, setInspected] = useState<CrosshairChange | null>(null);
+  const config = useMemo(
+    () => ({
+      debug: { profiling: debug },
+      crosshair: { mode: crosshairMode },
+      axes: { timeZone: utc ? ('utc' as const) : ('local' as const) },
+    }),
+    [debug, crosshairMode, utc]
+  );
   const getSnapshot = useCallback(
     () => controller.metrics.snapshot(),
     [controller]
@@ -65,23 +79,42 @@ export function PlaygroundScreen({
         </Text>
         <View style={styles.actions}>
           <Toggle
+            label={crosshairMode === 'hold' ? 'Hold' : 'Sticky'}
+            theme={theme}
+            onPress={() =>
+              setCrosshairMode((m) => (m === 'hold' ? 'sticky' : 'hold'))
+            }
+          />
+          <Toggle
+            label={utc ? 'UTC' : 'Local'}
+            theme={theme}
+            onPress={() => setUtc((u) => !u)}
+          />
+          <Toggle
             label={debug ? 'Hide debug' : 'Debug'}
             theme={theme}
             onPress={() => setDebug((d) => !d)}
           />
           <Toggle
-            label={mode === 'dark' ? 'Light theme' : 'Dark theme'}
+            label={mode === 'dark' ? 'Light' : 'Dark'}
             theme={theme}
             onPress={() => onModeChange(mode === 'dark' ? 'light' : 'dark')}
           />
         </View>
       </View>
+      <Text style={[styles.status, { color: theme.axis.textColor }]}>
+        {inspected
+          ? `#${inspected.index}  ${new Date(inspected.time).toISOString()}  ` +
+            `C ${formatPrice(inspected.close, 2)}`
+          : 'Long-press the chart to inspect a bar'}
+      </Text>
       <View style={styles.chart}>
         <TradingChart
           controller={controller}
           candles={candles}
           theme={theme}
           config={config}
+          onCrosshairChange={setInspected}
         />
         <JumpToLatestButton controller={controller} theme={theme} />
         {debug ? <DebugOverlay getSnapshot={getSnapshot} /> : null}
@@ -101,6 +134,7 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: 'row', gap: 8 },
   title: { fontSize: 18, fontWeight: '600' },
+  status: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 },
   button: {
     borderWidth: 1,
     borderRadius: 6,

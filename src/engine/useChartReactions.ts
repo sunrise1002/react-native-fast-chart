@@ -11,7 +11,13 @@ import {
   shouldSnapPriceRange,
 } from '../viewport/AutoScaleTarget';
 import { isLastBarVisible } from '../viewport/TimeScale';
+import {
+  extendRangeWithOutputs,
+  type UiOutputRef,
+} from '../indicators/UiIndicatorSet';
 import type { ChartSharedState } from './ChartSharedState';
+
+const NO_REFS: readonly UiOutputRef[] = [];
 
 /** Duration of the Y auto-scale follow animation, ms. */
 export const AUTOSCALE_ANIMATION_MS = 160;
@@ -29,21 +35,42 @@ interface AutoScaleInput extends PriceRange {
  * UI-thread reactions that keep derived engine state in sync without
  * React: the animated auto Y-scale and the `isAtRealtime` flag.
  */
-export function useChartReactions(state: ChartSharedState): void {
-  const { series, barSpacing, rightOffset, plotWidth } = state;
+export function useChartReactions(
+  state: ChartSharedState,
+  overlayRefs: readonly UiOutputRef[] = NO_REFS
+): void {
+  const { series, barSpacing, rightOffset, plotWidth, indicators } = state;
   const { priceMin, priceMax, isAtRealtime } = state;
 
-  // Auto Y-scale: follow the visible bars' range. Retargeting a short
+  // Auto Y-scale: follow the visible bars' range (widened by the overlay
+  // indicator values, like TradingView). Retargeting a short
   // ease-out timing every frame acts as a low-pass filter, so bars entering
   // or leaving the view don't make the scale jitter.
   useAnimatedReaction(
     (): AutoScaleInput => {
       const data = series.value;
+      const set = indicators.value;
       const out = { min: NaN, max: NaN, valid: false, resetVersion: 0 };
       out.valid = computeAutoScaleTarget(
         data,
         frameTimeScale(plotWidth, barSpacing, rightOffset, data.length),
-        out
+        out,
+        {},
+        undefined,
+        overlayRefs.length > 0
+          ? {
+              extend(start, end, range) {
+                extendRangeWithOutputs(
+                  set,
+                  data,
+                  overlayRefs,
+                  start,
+                  end,
+                  range
+                );
+              },
+            }
+          : undefined
       );
       out.resetVersion = data.resetVersion;
       return out;

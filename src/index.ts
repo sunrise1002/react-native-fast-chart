@@ -189,16 +189,108 @@ export {
   type ChartViewportConfig,
 } from './core/ChartConfig';
 export type { TradingChartController } from './core/ChartController';
-export type {
-  BandPoint,
-  HistogramPoint,
-  HistogramPolarity,
-  Indicator,
-  IndicatorDefinition,
-  IndicatorStyle,
-  LinePoint,
-  MultiLineResult,
+
+// Indicators (P5): contracts, registry, built-ins, engine, adapters
+export {
+  PRICE_SOURCES,
+  type BandPoint,
+  type HistogramPoint,
+  type HistogramPolarity,
+  type Indicator,
+  type IndicatorDefinition,
+  type IndicatorInput,
+  type IndicatorResult,
+  type IndicatorStyle,
+  type LinePoint,
+  type MultiLineResult,
+  type PriceSource,
 } from './indicators/Indicator';
+export {
+  IndicatorRegistry,
+  type IndicatorMeta,
+  type IndicatorModule,
+  type IndicatorOutput,
+  type IndicatorPlacement,
+  type IndicatorSeriesDescriptor,
+} from './indicators/IndicatorRegistry';
+export {
+  formatIndicatorLabel,
+  MAX_INDICATOR_PERIOD,
+  paramDefaults,
+  periodParam,
+  resolveNumberParam,
+  resolveSourceParam,
+  sourceParam,
+  type IndicatorConfigValue,
+  type IndicatorParam,
+  type NumberParam,
+  type RawIndicatorConfig,
+  type SourceParam,
+} from './indicators/IndicatorConfig';
+export {
+  createStepIndicator,
+  type StepKernel,
+} from './indicators/StepIndicator';
+export {
+  createIndicatorResult,
+  ensureResultCapacity,
+  isFiniteValue,
+  readSource,
+} from './indicators/IndicatorSeries';
+export {
+  createIndicatorRegistry,
+  registerBuiltInIndicators,
+} from './indicators/builtins';
+export {
+  DEFAULT_MA_PERIOD,
+  emaModule,
+  smaModule,
+  wmaModule,
+  type MovingAverageConfig,
+} from './indicators/builtins/MovingAverages';
+export {
+  BOLLINGER_LOWER,
+  BOLLINGER_MIDDLE,
+  BOLLINGER_UPPER,
+  bollingerModule,
+  type BollingerConfig,
+} from './indicators/builtins/Bollinger';
+export {
+  IndicatorEngine,
+  type IndicatorEngineOptions,
+  type IndicatorPatch,
+  type IndicatorUpdate,
+  type IndicatorUpdateListener,
+} from './indicators/IndicatorEngine';
+export type { IndicatorEntry } from './indicators/IndicatorDefinitions';
+export {
+  histogramPolarity,
+  toBandPoints,
+  toHistogramPoints,
+  toLinePoints,
+  toMultiLine,
+} from './indicators/IndicatorAdapters';
+export type {
+  UiIndicatorSeries,
+  UiIndicatorSet,
+} from './indicators/UiIndicatorSet';
+export {
+  buildBandFill,
+  buildLineGeometry,
+  type FillPathSink,
+  type LinePathSink,
+} from './render/indicators/LineGeometry';
+export {
+  resolveOverlaySpecs,
+  type OverlayRenderSpec,
+} from './render/indicators/OverlayRenderSpec';
+export {
+  INDICATOR_LEGEND_STYLE_CAPTION,
+  INDICATOR_LEGEND_STYLE_VALUE,
+  layoutIndicatorLegend,
+  type IndicatorLegendItem,
+  type IndicatorLegendLayout,
+} from './render/overlays/IndicatorLegendRenderer';
 export {
   PRICE_PANE_ID,
   type PaneDefinition,

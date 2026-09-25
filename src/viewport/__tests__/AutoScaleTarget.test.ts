@@ -8,6 +8,8 @@
  * | A3   | custom padding 0                                     | Boundary           | raw [10, 20]                          |
  * | A4   | no bars / nothing visible / all NaN                  | Boundary / invalid | false, `out` = NaN (AutoScale rule)   |
  * | A5   | scratch range object                                 | Equivalence        | reused                                |
+ * | A6   | extender widens the raw range before padding         | Equivalence        | padded [min, max] of candles ∪ ext    |
+ * | A7   | extender with nothing visible                        | Boundary           | not called, false                     |
  * | S1   | current range NaN / ∞ / max <= min                   | Invalid            | snap                                  |
  * | S2   | disjoint above / below                               | Boundary           | snap                                  |
  * | S3   | overlapping / touching                               | Boundary           | animate (false)                       |
@@ -47,6 +49,52 @@ const time = (barCount: number): TimeScaleState => ({
 });
 
 describe('computeAutoScaleTarget', () => {
+  it('A6: extender widens the visible range before padding', () => {
+    // Given
+    const cols = columns([10, 12], [14, 20]);
+    const out = { min: 0, max: 0 };
+    const calls: number[][] = [];
+    const extender = {
+      extend(start: number, end: number, range: { min: number; max: number }) {
+        calls.push([start, end, range.min, range.max]);
+        range.max = 30;
+      },
+    };
+    // When
+    const ok = computeAutoScaleTarget(
+      cols,
+      time(2),
+      out,
+      { paddingTop: 0, paddingBottom: 0 },
+      undefined,
+      extender
+    );
+    // Then
+    expect(ok).toBe(true);
+    expect(calls).toEqual([[0, 1, 10, 20]]);
+    expect(out).toEqual({ min: 10, max: 30 });
+  });
+
+  it('A7: extender is not called when nothing is visible', () => {
+    // Given
+    const calls: number[] = [];
+    const out = { min: 0, max: 0 };
+    // When
+    const ok = computeAutoScaleTarget(
+      columns([], []),
+      time(0),
+      out,
+      {},
+      undefined,
+      {
+        extend: () => calls.push(1),
+      }
+    );
+    // Then
+    expect(ok).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
   it('A1: pads the visible low/high by 10%', () => {
     // Given
     const cols = columns([10, 12, 15], [14, 20, 18]);

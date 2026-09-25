@@ -6,6 +6,12 @@ import type { Candle } from '../data/Candle';
 import { CandleStore } from '../data/CandleStore';
 import type { CandleIssue } from '../data/CandleValidation';
 import { mergeCandles } from '../data/HistoryMerge';
+import type { IndicatorInput } from '../indicators/Indicator';
+import type { IndicatorEntry } from '../indicators/IndicatorDefinitions';
+import {
+  IndicatorEngine,
+  type IndicatorPatch,
+} from '../indicators/IndicatorEngine';
 import {
   createChartMetrics,
   type ChartMetrics,
@@ -26,8 +32,9 @@ import {
 /**
  * Chart handle implemented in P3: data entry points, viewport commands
  * (the viewport subset of `TradingChartController`, spec §21) and
- * UI-thread state for host overlays. Indicator and pane methods arrive
- * with P5–P7.
+ * UI-thread state for host overlays, plus the P5 indicator methods (spec
+ * §21 `addIndicator` / `removeIndicator` / `updateIndicator`). Pane
+ * methods arrive with P6–P7.
  */
 export interface TradingChartHandle {
   /** JS-thread data store (source of truth). */
@@ -38,6 +45,8 @@ export interface TradingChartHandle {
   readonly isAtRealtime: SharedValue<boolean>;
   /** Timings (enabled by `config.debug.profiling`) + render counter. */
   readonly metrics: ChartMetrics;
+  /** Indicator engine (registry, results, entries) bound to `store`. */
+  readonly indicators: IndicatorEngine;
 
   /** Replaces the dataset (normalized); resets the viewport. */
   setData(candles: readonly Candle[]): CandleIssue[];
@@ -47,6 +56,20 @@ export interface TradingChartHandle {
   updateLastBar(candle: Candle): boolean;
   /** Merges older history without moving the viewport. */
   prependBars(candles: readonly Candle[]): void;
+
+  /**
+   * Adds an indicator (e.g. `{ type: 'ema', config: { period: 20 } }`);
+   * returns its id. Throws on an unknown type or a duplicate id.
+   */
+  addIndicator(input: IndicatorInput): string;
+  /** Removes an indicator; `false` when unknown. */
+  removeIndicator(id: string): boolean;
+  /** Patches config / style / pane; `false` when unknown. */
+  updateIndicator(id: string, patch: IndicatorPatch): boolean;
+  /** Replaces the whole indicator set (matched by id). */
+  setIndicators(inputs: readonly IndicatorInput[]): void;
+  /** Active indicators in display order. */
+  getIndicators(): readonly IndicatorEntry[];
 
   /** Scrolls to the latest bar (animated by default). */
   scrollToRealtime(animated?: boolean): void;
@@ -67,11 +90,15 @@ class ChartController implements ChartControllerInternals {
   readonly state: ChartSharedState;
   options: ViewportOptions;
   metrics: ChartMetrics;
+  readonly indicators: IndicatorEngine;
 
   constructor(config: ChartConfig) {
     this.state = createChartSharedState(config);
     this.options = toViewportOptions(config);
     this.metrics = createChartMetrics({ enabled: config.debug.profiling });
+    this.indicators = new IndicatorEngine(this.store, {
+      getProfiler: () => this.metrics.channel('indicator'),
+    });
   }
 
   get isAtRealtime(): SharedValue<boolean> {
@@ -99,6 +126,26 @@ class ChartController implements ChartControllerInternals {
 
   prependBars(candles: readonly Candle[]): void {
     mergeCandles(this.store, candles);
+  }
+
+  addIndicator(input: IndicatorInput): string {
+    return this.indicators.add(input);
+  }
+
+  removeIndicator(id: string): boolean {
+    return this.indicators.remove(id);
+  }
+
+  updateIndicator(id: string, patch: IndicatorPatch): boolean {
+    return this.indicators.update(id, patch);
+  }
+
+  setIndicators(inputs: readonly IndicatorInput[]): void {
+    this.indicators.setIndicators(inputs);
+  }
+
+  getIndicators(): readonly IndicatorEntry[] {
+    return this.indicators.getEntries();
   }
 
   scrollToRealtime(animated = true): void {

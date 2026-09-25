@@ -15,15 +15,39 @@ export interface FakeRect {
   height: number;
 }
 
+/** Recorded path command: `M`/`L` with a point, `Z` closes a contour. */
+export type FakePathCommand =
+  { cmd: 'M' | 'L'; x: number; y: number } | { cmd: 'Z' };
+
 export class FakePath {
-  constructor(readonly rects: readonly FakeRect[]) {}
+  constructor(
+    readonly rects: readonly FakeRect[],
+    readonly commands: readonly FakePathCommand[] = []
+  ) {}
 }
 
 export class FakePathBuilder {
   rects: FakeRect[] = [];
+  commands: FakePathCommand[] = [];
 
   reset(): this {
     this.rects = [];
+    this.commands = [];
+    return this;
+  }
+
+  moveTo(x: number, y: number): this {
+    this.commands.push({ cmd: 'M', x, y });
+    return this;
+  }
+
+  lineTo(x: number, y: number): this {
+    this.commands.push({ cmd: 'L', x, y });
+    return this;
+  }
+
+  close(): this {
+    this.commands.push({ cmd: 'Z' });
     return this;
   }
 
@@ -33,12 +57,13 @@ export class FakePathBuilder {
   }
 
   build(): FakePath {
-    return new FakePath([...this.rects]);
+    return new FakePath([...this.rects], [...this.commands]);
   }
 
   detach(): FakePath {
-    const path = new FakePath(this.rects);
+    const path = new FakePath(this.rects, this.commands);
     this.rects = [];
+    this.commands = [];
     return path;
   }
 }
@@ -71,6 +96,10 @@ export function matchFont(style?: { fontSize?: number; fontFamily?: string }) {
 
 export const PaintStyle = Object.freeze({ Fill: 0, Stroke: 1 });
 export type PaintStyle = (typeof PaintStyle)[keyof typeof PaintStyle];
+export const StrokeCap = Object.freeze({ Butt: 0, Round: 1, Square: 2 });
+export type StrokeCap = (typeof StrokeCap)[keyof typeof StrokeCap];
+export const StrokeJoin = Object.freeze({ Bevel: 0, Miter: 1, Round: 2 });
+export type StrokeJoin = (typeof StrokeJoin)[keyof typeof StrokeJoin];
 
 export class FakePaint {
   color: unknown;
@@ -78,9 +107,28 @@ export class FakePaint {
   strokeWidth = 0;
   pathEffect: unknown = null;
   antiAlias = false;
+  alpha = 1;
+  strokeCap: StrokeCap = StrokeCap.Butt;
+  strokeJoin: StrokeJoin = StrokeJoin.Miter;
 
   setColor(color: unknown) {
     this.color = color;
+  }
+
+  getAlphaf() {
+    return this.alpha;
+  }
+
+  setAlphaf(alpha: number) {
+    this.alpha = alpha;
+  }
+
+  setStrokeCap(cap: StrokeCap) {
+    this.strokeCap = cap;
+  }
+
+  setStrokeJoin(join: StrokeJoin) {
+    this.strokeJoin = join;
   }
 
   setStyle(style: PaintStyle) {
@@ -114,7 +162,8 @@ export type FakeDrawOp =
       op: 'rrect';
       rect: FakeRect;
       paint: FakePaint;
-    };
+    }
+  | { op: 'path'; path: FakePath; paint: FakePaint };
 
 export class FakePicture {
   constructor(readonly ops: readonly FakeDrawOp[]) {}
@@ -137,6 +186,10 @@ export class FakeCanvas {
 
   drawRRect(rrect: { rect: FakeRect }, paint: FakePaint) {
     this.ops.push({ op: 'rrect', rect: { ...rrect.rect }, paint });
+  }
+
+  drawPath(path: FakePath, paint: FakePaint) {
+    this.ops.push({ op: 'path', path, paint });
   }
 }
 

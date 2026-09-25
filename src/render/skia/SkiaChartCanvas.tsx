@@ -20,10 +20,13 @@ import type {
 } from '../../engine/ChartSharedState';
 import type { ChartMetrics } from '../../performance/ChartMetrics';
 import type { ChartTheme } from '../../theme/ChartTheme';
+import type { OverlayRenderSpec } from '../indicators/OverlayRenderSpec';
+import { useIndicatorDrawList } from './IndicatorPaints';
 import { useChartFont, useChartPaints } from './SkiaResources';
 import { useAxesLayer } from './useAxesLayer';
 import { useCandlePaths } from './useCandlePaths';
 import { useFrameProfiler } from './useFrameProfiler';
+import { useIndicatorLayer } from './useIndicatorLayer';
 import { useOverlayLayer } from './useOverlayLayer';
 import { usePriceAxisWidth } from './usePriceAxisWidth';
 
@@ -37,17 +40,19 @@ export interface SkiaChartCanvasProps {
   bodyRatio: number;
   pixelRatio: number;
   profiling: boolean;
+  /** Price-pane overlay indicators (keep the reference stable). */
+  overlaySpecs: readonly OverlayRenderSpec[];
   /** Current chart metrics (read when profiler samples are flushed). */
   getMetrics: () => ChartMetrics;
 }
 
 /**
  * Skia scene of the chart. Layer order: background → (clipped plot) grid,
- * wicks, bodies → axis separators → axes picture (labels, last price) →
+ * wicks, bodies, overlay indicators → axis separators → axes picture (labels, last price) →
  * legend → crosshair.
  *
  * A constant number of nodes regardless of bars or labels: five paths and
- * three pictures, all shared values rebuilt on the UI thread, so this
+ * four pictures, all shared values rebuilt on the UI thread, so this
  * component only re-renders on theme / config changes. Sizes come from
  * shared values too (the price axis auto-sizes on the UI thread).
  */
@@ -61,6 +66,7 @@ export function SkiaChartCanvas({
   bodyRatio,
   pixelRatio,
   profiling,
+  overlaySpecs,
   getMetrics,
 }: SkiaChartCanvasProps) {
   const font = useChartFont(theme);
@@ -76,6 +82,8 @@ export function SkiaChartCanvas({
     pixelRatio,
     profiling,
   });
+  const drawList = useIndicatorDrawList(overlaySpecs);
+  const indicatorLayer = useIndicatorLayer(state, drawList, profiling);
   const axesLayer = useAxesLayer(state, barMs, {
     font,
     paints,
@@ -97,6 +105,7 @@ export function SkiaChartCanvas({
     timeZone: axes.timeZone,
     showLegend: overlays.legend,
     showLegendVolume: overlays.legendVolume,
+    indicators: drawList,
   });
   const requiredWidth = useDerivedValue(
     () => axesLayer.frame.value.requiredAxisWidth
@@ -108,7 +117,7 @@ export function SkiaChartCanvas({
     layout.priceAxisWidth,
     timeAxisHeight
   );
-  useFrameProfiler(profiling, candles.frame, getMetrics);
+  useFrameProfiler(profiling, candles.frame, getMetrics, indicatorLayer.frame);
 
   const clip = useDerivedValue(() => ({
     x: 0,
@@ -130,6 +139,7 @@ export function SkiaChartCanvas({
         <Path path={candles.bearWicks} color={theme.candle.wickBearish} />
         <Path path={candles.bullBodies} color={theme.candle.bullish} />
         <Path path={candles.bearBodies} color={theme.candle.bearish} />
+        <Picture picture={indicatorLayer.picture} />
       </Group>
       <Rect
         x={plotWidth}

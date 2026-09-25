@@ -6,21 +6,34 @@ import type { TimeScaleState } from './TimeScale';
 import { getVisibleRange, type VisibleRange } from './VisibleRange';
 
 /**
+ * Widens a visible min/max with other series (overlay indicators) before
+ * padding. `out` holds the candle range of bars `[start, end]`.
+ */
+export interface PriceRangeExtender {
+  extend(start: number, end: number, out: PriceRange): void;
+}
+
+/**
  * Per-frame auto-scale target (spec §11.1): the padded low/high of the bars
  * actually on screen (no overscan, so bars scrolling in don't rescale
- * early). Worklet-compatible; the caller animates towards the result.
+ * early), optionally widened by `extender` (overlay indicators, like
+ * TradingView). Worklet-compatible; the caller animates towards the result.
  */
 export function computeAutoScaleTarget(
   columns: CandleColumns,
   time: TimeScaleState,
   out: PriceRange,
   options: PriceScaleOptions = {},
-  scratch: VisibleRange = { startIndex: 0, endIndex: -1 }
+  scratch: VisibleRange = { startIndex: 0, endIndex: -1 },
+  extender?: PriceRangeExtender
 ): boolean {
   'worklet';
   const range = getVisibleRange(time, 0, scratch);
   if (!candleRangeMinMax(columns, range.startIndex, range.endIndex, out)) {
     return false;
+  }
+  if (extender) {
+    extender.extend(range.startIndex, range.endIndex, out);
   }
   const scale = createPriceScale(out, 0, 1, options);
   out.min = scale.min;

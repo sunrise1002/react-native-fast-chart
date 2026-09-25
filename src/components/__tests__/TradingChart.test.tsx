@@ -11,7 +11,7 @@
  * | TC2  | light theme                                 | Equivalence      | light background                          |
  * | TC3  | themeOverride.background                    | Equivalence      | override wins over theme                  |
  * | TC4  | style + testID                              | Equivalence      | forwarded, flex kept                      |
- * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 5 paths, 3 pictures, bars drawn|
+ * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 5 paths, 4 pictures, bars drawn|
  * | TC6  | grid.visible false                          | Equivalence      | 4 paths (no grid)                         |
  * | TC7  | new candles array                           | Equivalence      | store replaced                            |
  * | TC8  | controller prop + ref                       | Equivalence      | ref receives that controller              |
@@ -20,6 +20,10 @@
  * | TC12 | same layout reported twice                  | Boundary         | no extra React render                     |
  * | TC13 | debug.profiling turned on after mount       | Equivalence      | frames land in the new metrics instance   |
  * | TC11 | config change (by value / same value)       | Equivalence      | options updated / no re-resolve           |
+ * | TC14 | indicators prop (EMA + BB)                  | Equivalence      | engine set, UI mirrored, overlay drawn    |
+ * | TC15 | indicators prop new array, same value        | Boundary         | setIndicators not called again            |
+ * | TC16 | indicators prop changed / emptied            | Equivalence      | set replaced / cleared                    |
+ * | TC17 | indicators prop with unknown type            | Invalid          | throws (surfaced to the error boundary)   |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -121,8 +125,9 @@ describe('TradingChart', () => {
         0
       );
     expect(wickRects).toBeGreaterThan(40);
+    // Indicators, axes, legend, crosshair.
     expect(view.UNSAFE_root.findAllByType('SkiaPicture' as never)).toHaveLength(
-      3
+      4
     );
   });
 
@@ -252,5 +257,69 @@ describe('TradingChart', () => {
     expect(options.realtimeRightOffset).toBe(3);
     expect(same).toBe(options);
     expect(handle.options.realtimeRightOffset).toBe(7);
+  });
+
+  it('TC14: renders indicators from the prop', async () => {
+    // Given / When
+    const { view, handle } = await mounted({
+      candles: CANDLES,
+      indicators: [
+        { type: 'ema', config: { period: 20 } },
+        { type: 'bollinger' },
+      ],
+    });
+    tick();
+    // Then
+    expect(handle.getIndicators().map((e) => e.id)).toEqual([
+      'ema-0',
+      'bollinger-1',
+    ]);
+    expect(handle.state.indicators.value.series['ema-0']?.length).toBe(1000);
+    const pictures = view.UNSAFE_root.findAllByType('SkiaPicture' as never);
+    const ops = pictures.map(
+      (p) =>
+        (p.props.picture.value as { ops: { op: string }[] }).ops.filter(
+          (o) => o.op === 'path'
+        ).length
+    );
+    // Tree order: indicators (inside the plot clip), axes, legend, crosshair.
+    expect(ops).toEqual([5, 0, 0, 0]);
+  });
+
+  it('TC15 / TC16: compares the prop by value', async () => {
+    // Given
+    const controller = createTradingChartController();
+    const handle = asInternals(controller);
+    const spy = jest.spyOn(handle, 'setIndicators');
+    const view = await render(
+      <TradingChart controller={controller} indicators={[{ type: 'ema' }]} />
+    );
+    // When: same value, new array
+    await view.rerender(
+      <TradingChart controller={controller} indicators={[{ type: 'ema' }]} />
+    );
+    // Then
+    expect(spy).toHaveBeenCalledTimes(1);
+    // When: changed / emptied
+    await view.rerender(
+      <TradingChart controller={controller} indicators={[{ type: 'sma' }]} />
+    );
+    expect(handle.getIndicators()[0]?.meta.type).toBe('sma');
+    await view.rerender(
+      <TradingChart controller={controller} indicators={[]} />
+    );
+    // Then
+    expect(handle.getIndicators()).toEqual([]);
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  it('TC17: unknown indicator types throw', async () => {
+    // Given
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    // When / Then
+    await expect(async () => {
+      await render(<TradingChart indicators={[{ type: 'nope' }]} />);
+    }).rejects.toThrow('Unknown indicator type "nope"');
+    error.mockRestore();
   });
 });

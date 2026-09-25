@@ -14,6 +14,8 @@
  * | R6   | no data / nothing visible                     | Boundary (empty)   | price range untouched                    |
  * | R7   | scroll last bar off screen and back           | Equivalence        | isAtRealtime false → true                |
  * | R8   | empty series                                  | Boundary (empty)   | isAtRealtime true                        |
+ * | R9   | overlay refs with values above the bars       | Equivalence        | range widened to the overlay max         |
+ * | R10  | overlay refs, series unaligned / no refs      | Equivalence        | candle range only                        |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
@@ -170,5 +172,44 @@ describe('useChartReactions — isAtRealtime', () => {
     tick(1);
     // Then
     expect(engine.state.isAtRealtime.value).toBe(true);
+  });
+});
+
+describe('useChartReactions — overlay auto-scale', () => {
+  function withOverlay(resetVersion: number, refs = [{ id: 'o', output: 0 }]) {
+    const engine = makeEngine(0);
+    engine.state.series.value = createUiCandleSeries(ramp(1000), 0, 1);
+    engine.state.rightOffset.value = 0;
+    const values = new Float64Array(1000).fill(NaN);
+    values[990] = 2000;
+    engine.state.indicators.value = {
+      series: {
+        o: { outputs: [values], length: 1000, resetVersion, firstTime: 0 },
+      },
+      revision: 1,
+    };
+    renderHook(() => useChartReactions(engine.state, refs));
+    tick(20);
+    return engine;
+  }
+
+  it('R9: widens the range with overlay values', () => {
+    // Given / When
+    const { state } = withOverlay(1);
+    // Then
+    const lo = 1050;
+    const pad = (2000 - lo) * 0.1;
+    expect(state.priceMax.value).toBeCloseTo(2000 + pad, 6);
+    expect(state.priceMin.value).toBeCloseTo(lo - pad, 6);
+  });
+
+  it('R10: ignores unaligned series and empty refs', () => {
+    // Given / When
+    const unaligned = withOverlay(2);
+    const noRefs = withOverlay(1, []);
+    // Then
+    const want = padded(950, 999);
+    expect(unaligned.state.priceMax.value).toBeCloseTo(want.max, 6);
+    expect(noRefs.state.priceMax.value).toBeCloseTo(want.max, 6);
   });
 });

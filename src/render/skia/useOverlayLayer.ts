@@ -21,8 +21,14 @@ import {
   OHLC_STYLE_CAPTION,
   OHLC_STYLE_UP,
 } from '../overlays/OHLCHeaderRenderer';
+import {
+  INDICATOR_LEGEND_STYLE_CAPTION,
+  INDICATOR_LEGEND_STYLE_VALUE,
+  layoutIndicatorLegend,
+} from '../overlays/IndicatorLegendRenderer';
 import { centeredBaseline } from '../RenderModel';
 import { framePriceScale, frameTimeScale } from './frameScales';
+import type { IndicatorDrawList } from './IndicatorPaints';
 import type { ChartFont, ChartPaints } from './SkiaResources';
 import {
   AXIS_LABEL_PADDING,
@@ -43,7 +49,12 @@ export interface OverlayStyle {
   timeZone: ChartTimeZone;
   showLegend: boolean;
   showLegendVolume: boolean;
+  /** Overlay indicators listed under the OHLC row (with their values). */
+  indicators?: IndicatorDrawList;
 }
+
+const EMPTY_LEGEND: IndicatorDrawList['legend'] = [];
+const EMPTY_PAINTS: IndicatorDrawList['legendPaints'] = [];
 
 function emptyPicture(): SkPicture {
   const recorder = Skia.PictureRecorder();
@@ -77,6 +88,9 @@ export function useOverlayLayer(
   const { font, paints, pixelRatio, timeAxisHeight } = style;
   const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
   const { showLegend, showLegendVolume } = style;
+  const legendItems = style.indicators?.legend ?? EMPTY_LEGEND;
+  const legendPaints = style.indicators?.legendPaints ?? EMPTY_PAINTS;
+  const { indicators } = state;
   const { font: skFont, glyphs, metrics, lineHeight } = font;
 
   const crosshair = useDerivedValue<SkPicture>(() => {
@@ -175,22 +189,25 @@ export function useOverlayLayer(
         ? crosshairIndex.value
         : data.length - 1;
     const canvas = resources.legend.beginRecording();
-    layoutOhlcHeader(
+    const rowHeight = lineHeight + 2;
+    const baselineOffset = centeredBaseline(rowHeight / 2, metrics);
+    const decimals = displayDecimals(
+      pricePrecision,
+      data.close[data.offset + data.length - 1] as number
+    );
+    const lines = layoutOhlcHeader(
       data,
       index,
       {
         x: LEGEND_INSET,
         y: LEGEND_INSET,
-        lineHeight: lineHeight + 2,
-        baselineOffset: centeredBaseline((lineHeight + 2) / 2, metrics),
+        lineHeight: rowHeight,
+        baselineOffset,
         maxWidth: plotWidth.value - LEGEND_INSET,
         captionGap: 3,
         groupGap: 8,
         glyphs,
-        decimals: displayDecimals(
-          pricePrecision,
-          data.close[data.offset + data.length - 1] as number
-        ),
+        decimals,
         thousandsSeparator: sep,
         showVolume: showLegendVolume,
       },
@@ -210,6 +227,39 @@ export function useOverlayLayer(
         },
       }
     );
+    if (legendItems.length > 0) {
+      layoutIndicatorLegend(
+        legendItems,
+        indicators.value,
+        data,
+        index,
+        {
+          x: LEGEND_INSET,
+          y: LEGEND_INSET + lines * rowHeight,
+          lineHeight: rowHeight,
+          baselineOffset,
+          maxWidth: plotWidth.value - LEGEND_INSET,
+          gap: 6,
+          glyphs,
+          decimals,
+          thousandsSeparator: sep,
+        },
+        {
+          text(text, x, baseline, textStyle) {
+            canvas.drawText(
+              text,
+              x,
+              baseline,
+              textStyle === INDICATOR_LEGEND_STYLE_CAPTION
+                ? paints.axisText
+                : (legendPaints[textStyle - INDICATOR_LEGEND_STYLE_VALUE] ??
+                    paints.axisText),
+              skFont
+            );
+          },
+        }
+      );
+    }
     return resources.legend.finishRecordingAsPicture();
   });
 

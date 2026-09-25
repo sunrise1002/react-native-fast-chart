@@ -4,6 +4,10 @@ import {
   emptyUiCandleSeries,
   type UiCandleSeries,
 } from '../data/UiCandleSeries';
+import {
+  emptyUiIndicatorSet,
+  type UiIndicatorSet,
+} from '../indicators/UiIndicatorSet';
 import type { TimeScaleOptions, TimeScaleState } from '../viewport/TimeScale';
 
 /**
@@ -45,6 +49,8 @@ export interface ChartSharedState {
   crosshairY: SharedValue<number>;
   /** Crosshair visibility, `0` (hidden) … `1`; animates on hide. */
   crosshairOpacity: SharedValue<number>;
+  /** UI-thread copy of the indicator outputs (see `UiIndicatorSet`). */
+  indicators: SharedValue<UiIndicatorSet>;
 }
 
 /** Static viewport options captured by worklets (plain numbers only). */
@@ -77,6 +83,7 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
     crosshairIndex: makeMutable(-1),
     crosshairY: makeMutable(Number.NaN),
     crosshairOpacity: makeMutable(0),
+    indicators: makeMutable(emptyUiIndicatorSet()),
   };
 }
 

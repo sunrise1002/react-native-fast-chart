@@ -3,6 +3,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useSyncExternalStore,
   type Ref,
 } from 'react';
 import {
@@ -27,7 +28,13 @@ import {
   type TradingChartHandle,
 } from '../engine/ChartControllerImpl';
 import { toViewportOptions } from '../engine/ChartSharedState';
+import { connectIndicatorsToUi } from '../engine/IndicatorSync';
 import { connectStoreToUi } from '../engine/StoreSync';
+import type { IndicatorInput } from '../indicators/Indicator';
+import {
+  overlayAutoScaleRefs,
+  resolveOverlaySpecs,
+} from '../render/indicators/OverlayRenderSpec';
 import { useChartReactions } from '../engine/useChartReactions';
 import { resizeCanvas } from '../engine/LayoutActions';
 import {
@@ -60,6 +67,13 @@ export interface TradingChartProps {
   theme?: ChartTheme;
   /** Partial overrides deep-merged over `theme`. Keep the reference stable. */
   themeOverride?: ChartThemeOverride;
+  /**
+   * Declarative indicator set (compared by value; matched by id, default
+   * `${type}-${index}`). Omit it to manage indicators imperatively through
+   * the controller (`addIndicator` …). Overlays (`sma`, `ema`, `wma`,
+   * `bollinger`) draw on the price pane with legend values.
+   */
+  indicators?: readonly IndicatorInput[];
   /** Partial config merged over `DEFAULT_CHART_CONFIG` (compared by value). */
   config?: DeepPartial<ChartConfig>;
   /**
@@ -79,7 +93,7 @@ export interface TradingChartProps {
 /**
  * Candlestick trading chart: Skia rendering of the visible bars (4 batched
  * paths), tick-derived grid, auto-sized price / time axes, last-price
- * marker, long-press crosshair with OHLC legend, pan / pinch / fling /
+ * marker, long-press crosshair with OHLC legend, overlay indicators, pan / pinch / fling /
  * double-tap gestures and auto Y-scale, all driven by UI-thread shared
  * values. React renders only on prop, theme, config or layout changes —
  * never per gesture frame.
@@ -91,6 +105,7 @@ export function TradingChart({
   theme = defaultDarkTheme,
   themeOverride,
   config,
+  indicators,
   onCrosshairChange,
   crosshairGesture,
   style,
@@ -133,7 +148,34 @@ export function TradingChart({
     }
   }, [handle, candles]);
 
-  useChartReactions(handle.state);
+  const indicatorsKey = indicators ? JSON.stringify(indicators) : null;
+  useEffect(() => {
+    if (indicators) {
+      handle.setIndicators(indicators);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- compared by value
+  }, [handle, indicatorsKey]);
+
+  useEffect(
+    () => connectIndicatorsToUi(handle.indicators, handle.state),
+    [handle]
+  );
+  // React state only when the indicator set / styles change (spec §22).
+  const engine = handle.indicators;
+  const entries = useSyncExternalStore(
+    useCallback((cb: () => void) => engine.subscribeEntries(cb), [engine]),
+    useCallback(() => engine.getEntries(), [engine])
+  );
+  const overlaySpecs = useMemo(
+    () => resolveOverlaySpecs(entries, resolvedTheme.indicatorPalette),
+    [entries, resolvedTheme]
+  );
+  const overlayRefs = useMemo(
+    () => overlayAutoScaleRefs(overlaySpecs),
+    [overlaySpecs]
+  );
+
+  useChartReactions(handle.state, overlayRefs);
   const builtInCrosshair = useCrosshairGesture(
     handle.state,
     resolved.crosshair,
@@ -179,6 +221,7 @@ export function TradingChart({
           bodyRatio={resolved.viewport.bodyRatio}
           pixelRatio={pixelRatio}
           profiling={resolved.debug.profiling}
+          overlaySpecs={overlaySpecs}
           getMetrics={getMetrics}
         />
       </View>

@@ -16,6 +16,9 @@
  * | CC10 | configure: options updated; profiling toggled/same | Equivalence        | new metrics only when profiling changes    |
  * | CC11 | isAtRealtime                                       | Equivalence        | the state's shared value                   |
  * | CC12 | useTradingChartController across re-renders        | Equivalence        | stable handle                              |
+ * | CC13 | add / update / remove / set / get indicators       | Equivalence        | delegated to the indicator engine          |
+ * | CC14 | addIndicator unknown type                          | Invalid            | throws, nothing added                      |
+ * | CC15 | indicator flush with profiling on                  | Equivalence        | `indicator` metrics channel records        |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { renderHook } from '@testing-library/react-native';
@@ -216,5 +219,51 @@ describe('useTradingChartController', () => {
     rerender({});
     // Then
     expect(result.current).toBe(first);
+  });
+});
+
+describe('indicator API', () => {
+  it('CC13: delegates to the engine', () => {
+    // Given
+    const handle = loaded();
+    // When
+    const id = handle.addIndicator({ type: 'ema', config: { period: 20 } });
+    handle.updateIndicator(id, { config: { period: 30 } });
+    handle.setIndicators([
+      { type: 'ema', id, config: { period: 30 } },
+      { type: 'sma', id: 's' },
+    ]);
+    // Then
+    expect(handle.getIndicators().map((e) => e.label)).toEqual([
+      'EMA 30',
+      'SMA 9',
+    ]);
+    expect(handle.removeIndicator('s')).toBe(true);
+    expect(handle.removeIndicator('s')).toBe(false);
+    handle.indicators.flush();
+    expect(handle.indicators.getResult(id)?.length).toBe(1000);
+  });
+
+  it('CC14: unknown type throws', () => {
+    // Given
+    const handle = loaded();
+    // When / Then
+    expect(() => handle.addIndicator({ type: 'macd?' })).toThrow(
+      'Unknown indicator type "macd?"'
+    );
+    expect(handle.getIndicators()).toEqual([]);
+  });
+
+  it('CC15: records the indicator metrics channel', () => {
+    // Given
+    const handle = asInternals(
+      createTradingChartController({ debug: { profiling: true } })
+    );
+    handle.setData(generateCandles({ count: 100, seed: 2 }));
+    handle.addIndicator({ type: 'ema' });
+    // When
+    handle.indicators.flush();
+    // Then
+    expect(handle.metrics.snapshot().channels.indicator.count).toBe(1);
   });
 });

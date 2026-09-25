@@ -1,4 +1,4 @@
-import { formatPrice } from '../../axes/PriceFormat';
+import { formatPrice, formatVolume } from '../../axes/PriceFormat';
 import { measureText, type GlyphWidthTable } from '../../axes/TextMetrics';
 import type { UiCandleSeries } from '../../data/UiCandleSeries';
 import {
@@ -23,6 +23,33 @@ export interface IndicatorLegendItem {
   label: string;
   /** Output column + text style of each value. */
   values: readonly { output: number; style: number }[];
+  /** Fixed decimals; `-1` / omitted uses the layout decimals. */
+  decimals?: number;
+  /** Compact K / M / B notation (volume). */
+  compact?: boolean;
+}
+
+/**
+ * Indicator value text: compact K / M / B (sign kept) or fixed decimals
+ * (`decimals < 0` → `fallbackDecimals`). Non-finite → `''`.
+ */
+export function formatIndicatorValue(
+  value: number,
+  decimals: number,
+  compact: boolean,
+  fallbackDecimals: number,
+  thousandsSeparator: string
+): string {
+  'worklet';
+  if (compact) {
+    const text = formatVolume(value < 0 ? -value : value);
+    return value < 0 && text !== '' ? '-' + text : text;
+  }
+  return formatPrice(
+    value,
+    decimals >= 0 ? decimals : fallbackDecimals,
+    thousandsSeparator
+  );
 }
 
 export interface IndicatorLegendLayout {
@@ -74,8 +101,10 @@ export function layoutIndicatorLegend(
       const text =
         column === undefined
           ? ''
-          : formatPrice(
+          : formatIndicatorValue(
               column[index] as number,
+              item.decimals ?? -1,
+              item.compact === true,
               layout.decimals,
               layout.thousandsSeparator
             );

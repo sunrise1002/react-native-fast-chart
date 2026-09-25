@@ -60,6 +60,12 @@ export interface ChartTheme {
   pane: {
     separatorColor: ColorValue;
     separatorWidth: number;
+    /** Indicator guide levels (RSI 30 / 50 / 70). */
+    guideColor: ColorValue;
+    /** Dash pattern `[on, off]`, dp; empty array draws a solid line. */
+    guideDash: readonly number[];
+    /** Fill between the guide band levels (RSI 30 … 70). */
+    guideBandColor: ColorValue;
   };
 
   /** Default colors assigned to indicators in order of creation. */

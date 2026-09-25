@@ -37,7 +37,13 @@ export const defaultLightTheme: ChartTheme = {
     up: 'rgba(14, 203, 129, 0.4)',
     down: 'rgba(246, 70, 93, 0.4)',
   },
-  pane: { separatorColor: '#EAECEF', separatorWidth: 1 },
+  pane: {
+    separatorColor: '#EAECEF',
+    separatorWidth: 1,
+    guideColor: 'rgba(112, 122, 138, 0.6)',
+    guideDash: [4, 4],
+    guideBandColor: 'rgba(126, 87, 194, 0.08)',
+  },
   indicatorPalette: [
     '#C99400',
     '#D1459E',

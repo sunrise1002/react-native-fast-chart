@@ -37,7 +37,13 @@ export const defaultDarkTheme: ChartTheme = {
     up: 'rgba(14, 203, 129, 0.5)',
     down: 'rgba(246, 70, 93, 0.5)',
   },
-  pane: { separatorColor: '#2B3139', separatorWidth: 1 },
+  pane: {
+    separatorColor: '#2B3139',
+    separatorWidth: 1,
+    guideColor: 'rgba(132, 142, 156, 0.6)',
+    guideDash: [4, 4],
+    guideBandColor: 'rgba(126, 87, 194, 0.08)',
+  },
   indicatorPalette: [
     '#F0B90B',
     '#E377C2',

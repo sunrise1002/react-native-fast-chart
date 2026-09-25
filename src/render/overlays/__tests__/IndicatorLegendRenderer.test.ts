@@ -12,6 +12,9 @@
  * | I5   | unknown output column                           | Invalid           | value skipped                                |
  * | I6   | narrow maxWidth                                 | Boundary          | values wrap to next line, row count grows    |
  * | I7   | no items                                        | Boundary (empty)  | 0 lines, nothing emitted                     |
+ * | I8   | item decimals 0 / compact                       | Equivalence       | per-item format overrides layout decimals    |
+ * | V1   | formatIndicatorValue compact ±, fixed, fallback | Normal / Boundary | "1.50K" / "-1.50K" / "3.1" / layout decimals |
+ * | V2   | formatIndicatorValue NaN / ∞ (both modes)       | Invalid           | ''                                           |
  */
 import { describe, expect, it } from '@jest/globals';
 import { createGlyphWidthTable } from '../../../axes/TextMetrics';
@@ -19,6 +22,7 @@ import { createUiCandleSeries } from '../../../data/UiCandleSeries';
 import type { UiIndicatorSet } from '../../../indicators/UiIndicatorSet';
 import { columns } from '../../__tests__/columns';
 import {
+  formatIndicatorValue,
   INDICATOR_LEGEND_STYLE_CAPTION,
   layoutIndicatorLegend,
   type IndicatorLegendItem,
@@ -216,5 +220,46 @@ describe('layoutIndicatorLegend', () => {
     // Then
     expect(lines).toBe(0);
     expect(texts).toEqual([]);
+  });
+
+  it('I8: per-item decimals and compact format', () => {
+    // Given
+    const items: IndicatorLegendItem[] = [
+      { id: 'ema', label: 'E', values: [{ output: 0, style: 1 }], decimals: 0 },
+      {
+        id: 'bb',
+        label: 'V',
+        values: [{ output: 0, style: 2 }],
+        compact: true,
+        decimals: -1,
+      },
+    ];
+    // When
+    const { texts } = run(
+      set([
+        [0, 12.6],
+        [0, 1500],
+      ]),
+      1,
+      items
+    );
+    // Then
+    expect(texts.map((t) => t.text)).toEqual(['E', '13', 'V', '1.50K']);
+  });
+});
+
+describe('formatIndicatorValue', () => {
+  it('V1: compact and fixed formats', () => {
+    // Given / When / Then
+    expect(formatIndicatorValue(1500, -1, true, 2, ',')).toBe('1.50K');
+    expect(formatIndicatorValue(-1500, -1, true, 2, ',')).toBe('-1.50K');
+    expect(formatIndicatorValue(3.14159, 1, false, 4, ',')).toBe('3.1');
+    expect(formatIndicatorValue(1234.5, -1, false, 2, ',')).toBe('1,234.50');
+  });
+
+  it.each([NaN, Infinity, -Infinity])('V2: %p formats as empty', (v) => {
+    // Given / When / Then
+    expect(formatIndicatorValue(v, 2, false, 2, ',')).toBe('');
+    expect(formatIndicatorValue(v, 2, true, 2, ',')).toBe('');
   });
 });

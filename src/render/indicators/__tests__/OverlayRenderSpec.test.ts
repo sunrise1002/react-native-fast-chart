@@ -12,6 +12,7 @@
  * | O7   | fill false                                           | Equivalence      | no fill, strokes kept                          |
  * | O8   | empty palette / palette cycling                      | Boundary (empty) | fallback color / wraps                         |
  * | O9   | histogram series                                     | Equivalence      | skipped                                        |
+ * | O11  | non-price-scaled indicator on the price pane         | Equivalence      | skipped, no slot consumed                      |
  * | O10  | empty entries                                        | Boundary (empty) | []                                             |
  * | R1   | auto-scale refs                                      | Normal           | one per stroke                                 |
  */
@@ -207,5 +208,18 @@ describe('resolveOverlaySpecs', () => {
       { id: 'bollinger', output: 0 },
       { id: 'bollinger', output: 2 },
     ]);
+  });
+
+  it('O11: non-price-scaled indicators on the price pane are skipped', () => {
+    // Given: volume overlay on the price pane, then an EMA
+    const entries = [
+      entry({ type: 'volume', paneId: 'price' }),
+      entry({ type: 'ema' }),
+    ];
+    // When
+    const specs = resolveOverlaySpecs(entries, PALETTE);
+    // Then
+    expect(specs.map((s) => s.id)).toEqual(['ema']);
+    expect(specs[0]?.strokes[0]?.color).toBe('#111');
   });
 });

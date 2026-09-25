@@ -45,7 +45,9 @@ import {
 } from 'react-native-fast-chart';
 
 // Untrusted input -> sorted, deduplicated, validated candles (time in Unix ms).
-const { candles, issues } = normalizeCandles(rawRowsFromApi, { timeUnit: 'ms' });
+const { candles, issues } = normalizeCandles(rawRowsFromApi, {
+  timeUnit: 'ms',
+});
 
 export function Screen() {
   return (

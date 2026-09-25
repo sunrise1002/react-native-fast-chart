@@ -29,15 +29,15 @@ The spec's `src/chart/*` tree is flattened into `src/*`. Directories for later
 phases (`viewport/`, `render/`, `interaction/`) are created by those phases.
 Tests live next to the code in `__tests__/` folders (`*.test.ts[x]`).
 
-| Command                 | Purpose                                                        |
-| ----------------------- | -------------------------------------------------------------- |
-| `yarn`                  | install all workspaces (lockfile committed, Yarn 4.11 vendored) |
-| `yarn typecheck`        | `tsc --noEmit` for the library, then for `example/`            |
-| `yarn lint` / `lint:fix`| ESLint (`@react-native` config) + Prettier                      |
-| `yarn test`             | Jest (`@react-native/jest-preset`)                              |
-| `yarn test:coverage`    | Jest + coverage (text summary + lcov in `coverage/`)            |
-| `yarn prepare`          | bob build → `lib/module` (ESM) + `lib/typescript` (d.ts)        |
-| `yarn example start`    | Expo dev server for the example app                             |
+| Command                  | Purpose                                                         |
+| ------------------------ | --------------------------------------------------------------- |
+| `yarn`                   | install all workspaces (lockfile committed, Yarn 4.11 vendored) |
+| `yarn typecheck`         | `tsc --noEmit` for the library, then for `example/`             |
+| `yarn lint` / `lint:fix` | ESLint (`@react-native` config) + Prettier                      |
+| `yarn test`              | Jest (`@react-native/jest-preset`)                              |
+| `yarn test:coverage`     | Jest + coverage (text summary + lcov in `coverage/`)            |
+| `yarn prepare`           | bob build → `lib/module` (ESM) + `lib/typescript` (d.ts)        |
+| `yarn example start`     | Expo dev server for the example app                             |
 
 ---
 
@@ -90,7 +90,7 @@ Tests live next to the code in `__tests__/` folders (`*.test.ts[x]`).
 - **Normalization**: O(n) when already sorted, stable sort otherwise;
   duplicates resolved "last occurrence in input order wins" (latest market
   update). Output rows are fresh, monomorphic `{time, open, high, low, close,
-  volume}` objects; extra fields are dropped; input is never mutated. Every
+volume}` objects; extra fields are dropped; input is never mutated. Every
   dropped row is reported as `{ index, reason }` sorted by index.
 - **Theme vs overrides**: `theme` is a full `ChartTheme`, `themeOverride` a
   `DeepPartial` merged with `mergeTheme`. Arrays (palette, dash patterns) are

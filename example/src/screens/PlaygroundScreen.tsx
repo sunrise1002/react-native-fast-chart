@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   TradingChart,
@@ -7,13 +7,14 @@ import {
   defaultLightTheme,
   formatPrice,
   useTradingChartController,
-  type ChartTheme,
   type CrosshairChange,
   type CrosshairMode,
+  type IndicatorInput,
 } from 'react-native-fast-chart';
 import { generateCandles } from 'react-native-fast-chart/testing';
 import { DebugOverlay } from '../components/DebugOverlay';
 import { JumpToLatestButton } from '../components/JumpToLatestButton';
+import { Toggle } from '../components/Toggle';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -25,23 +26,13 @@ interface PlaygroundScreenProps {
   onModeChange: (mode: ThemeMode) => void;
 }
 
-interface ToggleProps {
-  label: string;
-  theme: ChartTheme;
-  onPress: () => void;
-}
-
-function Toggle({ label, theme, onPress }: ToggleProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={[styles.button, { borderColor: theme.axis.lineColor }]}
-    >
-      <Text style={{ color: theme.axis.textColor }}>{label}</Text>
-    </Pressable>
-  );
-}
+/** Overlays shown by the "Indicators" toggle (declarative prop API). */
+const OVERLAYS: readonly IndicatorInput[] = [
+  { type: 'ema', config: { period: 20 } },
+  { type: 'ema', config: { period: 50 } },
+  { type: 'bollinger', config: { period: 20, stdDev: 2 } },
+];
+const NO_OVERLAYS: readonly IndicatorInput[] = [];
 
 export function PlaygroundScreen({
   mode,
@@ -56,6 +47,7 @@ export function PlaygroundScreen({
   const [debug, setDebug] = useState(false);
   const [crosshairMode, setCrosshairMode] = useState<CrosshairMode>('hold');
   const [utc, setUtc] = useState(false);
+  const [overlays, setOverlays] = useState(true);
   // Updated only when the crosshair changes bar (never per frame).
   const [inspected, setInspected] = useState<CrosshairChange | null>(null);
   const config = useMemo(
@@ -86,6 +78,12 @@ export function PlaygroundScreen({
             }
           />
           <Toggle
+            label="Ind"
+            active={overlays}
+            theme={theme}
+            onPress={() => setOverlays((o) => !o)}
+          />
+          <Toggle
             label={utc ? 'UTC' : 'Local'}
             theme={theme}
             onPress={() => setUtc((u) => !u)}
@@ -114,6 +112,7 @@ export function PlaygroundScreen({
           candles={candles}
           theme={theme}
           config={config}
+          indicators={overlays ? OVERLAYS : NO_OVERLAYS}
           onCrosshairChange={setInspected}
         />
         <JumpToLatestButton controller={controller} theme={theme} />
@@ -132,14 +131,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  actions: { flexDirection: 'row', gap: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   title: { fontSize: 18, fontWeight: '600' },
   status: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 },
-  button: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
   chart: { flex: 1 },
 });

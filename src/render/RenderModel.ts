@@ -47,7 +47,32 @@ export interface GridLineGeometry {
   value: number;
 }
 
-/** Reserved for P4 (axis renderers). */
+/**
+ * Receives positioned text (axis labels, badges, legend). `style` is a
+ * small integer the renderer maps to a paint (see the `*_STYLE_*`
+ * constants of each layout module).
+ */
+export interface TextSink {
+  text(text: string, x: number, baseline: number, style: number): void;
+}
+
+/** Vertical font metrics, dp, both positive (Skia's ascent is negative). */
+export interface TextBoxMetrics {
+  /** Distance from the baseline up to the top of the glyphs. */
+  ascent: number;
+  /** Distance from the baseline down to the bottom of the glyphs. */
+  descent: number;
+}
+
+/** Baseline that vertically centers a line of text on `centerY`. */
+export function centeredBaseline(
+  centerY: number,
+  metrics: TextBoxMetrics
+): number {
+  'worklet';
+  return centerY + (metrics.ascent - metrics.descent) / 2;
+}
+
 export interface AxisLabelGeometry {
   text: string;
   x: number;
@@ -94,7 +119,6 @@ export interface TimeAxisRenderModel {
   labels: AxisLabelGeometry[];
 }
 
-/** Reserved for P4 (crosshair). */
 export interface CrosshairRenderModel {
   x: number;
   y: number;

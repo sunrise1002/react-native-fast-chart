@@ -34,7 +34,8 @@
     "lint:fix": "eslint \"**/*.{js,ts,tsx}\" --fix",
     "format": "prettier --write \"**/*.{js,ts,tsx,json,md}\"",
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "bench": "node --experimental-transform-types --no-warnings --import ./benchmarks/register.mjs benchmarks/run.ts"
   },
   "keywords": [
     "react-native",

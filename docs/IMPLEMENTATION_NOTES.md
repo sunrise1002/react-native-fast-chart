@@ -636,3 +636,224 @@ pathBuildMs]` pairs on the UI thread and flushes them to
   are reserved but empty.
 - The frame profiler measures path build time (`render` channel) and frame
   intervals (`frame`). Skia's own draw time isn't visible from JS.
+
+## P4 — Axes, last price marker, crosshair and OHLC header
+
+### What was built
+
+- **`src/axes/` — pure tick / format modules** (no Skia or React imports;
+  every function is a worklet except the buffer / table factories):
+  - `PriceFormat`: `formatPrice` (fixed decimals, thousands separator,
+    never `-0.00`, exponent notation from 1e21, `''` for non-finite input),
+    `formatSignedPrice`, `formatPercent`, `formatVolume` (compact
+    K / M / B / T), `stepDecimals`, `autoPriceDecimals` (2 decimals from 1
+    upwards, otherwise 4 significant digits, e.g. `0.00001234` → 8),
+    `displayDecimals`. No `Intl` / `toLocaleString` / regex (unreliable
+    or slow on the UI runtime).
+  - `PriceTicks`: nice steps `1 / 2 / 2.5 / 5 × 10^n`. The target tick
+    count is `floor(paneHeight / max(3.5 em, 24 dp))`. `pricePrecision`
+    floors the step at `10^-p` and fixes the label decimals; otherwise the
+    decimals come from the step. Ticks are exact multiples of the step,
+    written into a preallocated `Float64Array`.
+  - `TimeTicks`: a 34-entry interval ladder (1 s … 12 h, 1 / 2 / 3 / 5 /
+    10 / 15 days, 1 / 2 / 3 / 6 months, 1 … 100 years).
+    - `selectTimeInterval` depends only on bar duration and zoom (never
+      on the pan position), so labels don't flicker. Sub-day intervals must
+      be whole multiples of the bar (4 h bars skip 6 h); day intervals only
+      apply to bars of up to a day.
+    - `generateTimeTicks` marks each bar that crosses a boundary relative
+      to the previous bar, so ticks sit on real bars and follow session
+      gaps. The weight is the largest calendar boundary crossed
+      (year 4 > month 3 > day 2 > time 1).
+    - `thinTicksBySpacing` (greedy, a strictly heavier tick replaces the
+      previous one) removes overlaps.
+    - `estimateBarInterval` takes the minimum positive gap of the last 64
+      bars.
+  - `TimeFormat`: TradingView-style tick labels (`2024` / `Mar` / `15` /
+    `14:30[:05]`) and the crosshair `YYYY-MM-DD[ HH:mm[:ss]]`.
+    `CivilTime` does the calendar math without `Date` (Hinnant's
+    algorithms).
+  - `TimeZone`: `'local'` (default), `'utc'` or a fixed offset in minutes.
+    The local offset is resolved by `offsetAt`, which probes
+    `getTimezoneOffset` at `t` and `t + 7 d` and binary-searches a DST
+    transition to the millisecond. Ascending lookups cost about 2 probes
+    per week of data.
+  - `LabelCollision` (`rangesOverlap`, `clampSpan`, `thinTicksBySpacing`),
+    `TextMetrics` (glyph-width table for printable ASCII, used for
+    allocation-free label measuring in worklets) and `AxisWidth`
+    (`requiredAxisWidth` quantized to 4 dp, grow-only `nextAxisWidth`).
+- **Layout renderers** (`src/render/axes`, `src/render/overlays`; pure and
+  sink-based like the P3 geometry):
+  - `layoutPriceAxisLabels`: skips labels leaving the pane or overlapping
+    the last-price badge.
+  - `layoutTimeAxisLabels`: centered under the bar; labels clipped by the
+    plot edges are skipped.
+  - `computeLastPriceMarker`: bull / bear by the last bar. When the close
+    is off-screen the line is hidden and the badge is pinned to the
+    top / bottom edge. The badge height is a parameter, which is the
+    countdown slot.
+  - `nearestBarIndex` (O(1), clamped to the data), `computeCrosshair`
+    (x snapped to the bar center, y follows the finger and is clamped;
+    both on device-pixel centers).
+  - `layoutOhlcHeader`: `O H L C ±Δ (±%) V`, colored by bar direction;
+    groups wrap instead of overflowing.
+- **Grid**: `buildGridGeometry` now takes the price / time ticks, so grid
+  lines always match the labels. `NiceStep` and `useGridPath` were
+  removed.
+- **Skia layer** (`src/render/skia`):
+  - `SkiaResources`: one `matchFont` font per theme font and its glyph
+    table / metrics; paints created once per theme (dashed strokes via
+    `PathEffect.MakeDash`).
+  - `useAxesLayer`: one mapper builds the grid path and one `SkPicture`
+    (price labels, time labels, last-price line + badge) per viewport /
+    price / data change, and reports the widest label.
+  - `useOverlayLayer`: the crosshair picture (dashed lines + price / time
+    label boxes; a cached empty picture while hidden) and the legend
+    picture (crosshair bar, otherwise the last bar).
+  - `usePriceAxisWidth`: auto-sizes the right gutter on the UI thread.
+    It is grow-only while the dataset is unchanged and may shrink after
+    a reset. It is clamped to `[layout.priceAxisWidth, 40 % of the
+    canvas]`.
+  - `SkiaChartCanvas` is now sized entirely from shared values
+    (`canvasWidth/Height`, `priceAxisWidth`). Node count is constant:
+    5 paths + 3 pictures.
+- **Crosshair interaction**:
+  - `CrosshairActions` (`showCrosshair`, `moveCrosshair`, `hideCrosshair`
+    with a delayed fade, `isCrosshairShown`); state lives in shared
+    values `crosshairIndex`, `crosshairY` and `crosshairOpacity`.
+  - `useCrosshairGesture`: `Gesture.Pan().activateAfterLongPress(250)`.
+    `'hold'` mode fades out `holdMs` after release. `'sticky'` mode keeps
+    it; a manual-activation drag (after a 4 dp slop) moves it and a tap
+    hides it. It is raced against pan / pinch / double tap, so the chart
+    doesn't pan while the crosshair is active.
+  - `useCrosshairCallback`: `onCrosshairChange` goes through
+    `useAnimatedReaction` + `scheduleOnRN`, only when the bar changes and
+    with `null` on hide.
+- **Layout**: `LayoutActions` (`resizeCanvas`, `setPriceAxisWidth`,
+  `plotSizeFor`). `TradingChart` no longer keeps a size in React state:
+  `onLayout` schedules `resizeCanvas` on the UI thread.
+- **Example**: the Playground gets Hold/Sticky and Local/UTC toggles and a
+  status line fed by `onCrosshairChange`.
+
+### Key design decisions
+
+- **Pictures instead of `<Text>` nodes.** Labels change with every pan
+  frame; a React `<Text>` per label would mean React state per frame
+  (spec §33). Each layer records a single `SkPicture` in a mapper, so the
+  scene has a fixed node count and label drawing is batched.
+- **Measuring without JSI.** `font.measureText` per label per frame is a
+  JSI call. Glyph widths are read once on the JS thread and label widths
+  are sums of table entries (label glyphs are tabular digits; kerning is
+  ignored).
+- **Grid from ticks.** Grid and labels come from one tick set, so they
+  cannot disagree. Vertical lines sit on bars, not on round timestamps, so
+  session gaps keep lines on candles.
+- **Stable axis width.** Label widths change while panning; a width that
+  followed them would shift every bar. The width is quantized to 4 dp and
+  only grows, except on a dataset reset.
+- **Time interval from zoom only.** Choosing the interval from the visible
+  range would make labels jump while panning. Boundary crossings plus a
+  weight-ordered, stable thinning keep a label on the same bar as it
+  scrolls.
+- **Daily and longer bars use UTC dates.** Exchanges stamp daily bars at
+  00:00 UTC; in a negative-offset zone a local date would be the previous
+  day.
+- **Crosshair is a race participant, not a separate layer.** The long
+  press wins the race only after the delay, so a quick horizontal drag
+  still pans (TradingView feel). The sticky drag fails at touch-down when
+  the crosshair is hidden, so it costs nothing in normal use.
+- **Mapper scratch objects.** Worklet-captured objects may be frozen in
+  development builds, so tick buffers and label arrays are allocated per
+  mapper run (a few hundred bytes). Reusing them belongs to the P8
+  allocation audit.
+
+### Public API added (main entry)
+
+- Props: `onCrosshairChange` (types `CrosshairChange`,
+  `CrosshairChangeHandler`). `crosshairGesture` now also accepts a
+  `ComposedGesture` and replaces the built-in crosshair.
+- Config:
+  - `axes: { pricePrecision: null, thousandsSeparator: ',', timeZone: 'local' }`
+    (`ChartAxesConfig`, `ChartTimeZone`);
+  - `crosshair: { mode: 'hold', longPressMs: 250, holdMs: 1200 }`
+    (`ChartCrosshairConfig`, `CrosshairMode`);
+  - `overlays: { lastPrice: true, legend: true, legendVolume: true }`.
+  - `layout.priceAxisWidth` is now the minimum width.
+- Axes: the functions and constants of `PriceFormat`, `PriceTicks`,
+  `TimeTicks` (incl. type `TimeColumn`), `TimeFormat`, `TimeZone`,
+  `LabelCollision` and `AxisWidth`.
+- Renderers: `layoutPriceAxisLabels`, `layoutTimeAxisLabels`,
+  `computeLastPriceMarker`, `nearestBarIndex`, `computeCrosshair`,
+  `layoutOhlcHeader`, `centeredBaseline`, plus their constants and types.
+- Gestures: `CROSSHAIR_TEST_IDS`, `STICKY_DRAG_SLOP_DP`.
+- Removed (pre-1.0): `niceStep`, `nicePriceStep`, `niceBarStep` and the
+  step-function grid options.
+
+### Tests
+
+- **Totals**: 1124 Jest tests in 55 suites, all passing. P4 added 19
+  suites and removed `NiceStep`. Each file header holds its perspective
+  table and every case uses Given/When/Then.
+- **Pure modules**: all `src/axes`, `src/render/axes`,
+  `src/render/overlays`, `GridGeometry`, `LayoutActions` and
+  `CrosshairActions` are at 100 % statements / branches / functions.
+  Failure / boundary cases outnumber happy paths: NaN / ±∞ / 0 / negative
+  inputs, exact edges, capacity caps, DST transitions to 1 ms, physical
+  buffer offsets.
+- **Hooks**: `useAxesLayer`, `useOverlayLayer` and `usePriceAxisWidth`
+  run against real Reanimated. The Skia mock now records pictures
+  (`drawText` / `drawLine` / `drawRRect`) and provides a fake font
+  (0.6 em per glyph), paints and path effects.
+- **Gestures**: long press show / move / hold-fade / sticky, disabled and
+  custom crosshair, `onCrosshairChange` dispatch (one call per bar,
+  `null` on hide, latest handler), and the sticky-drag touch handlers
+  unit-tested against a fake state manager.
+- **Coverage** (`yarn test:coverage`): 99.80 % statements, 99.78 %
+  branches, 98.88 % functions. Uncovered:
+  - the four one-line `onTouches*` wrappers of the sticky drag, because
+    RNGH's jest utils cannot fire touch events (the functions they call
+    are tested directly);
+  - the pre-existing `__DEV__` / `Date.now` branches from P1 / P3.
+- **Benchmarks** (`yarn bench`): a full axes frame (price ticks + labels,
+  time ticks + labels, grid) takes ≈ 2.9 µs at 8 dp and ≈ 8.6 µs at
+  0.5 dp on the dev machine.
+
+### Manual verification (example Playground)
+
+1. **Axes**: price labels on the right, never overlapping the last-price
+   badge; time labels under bars, with day / month / year boundaries
+   shown as `15` / `Mar` / `2024` when zoomed out.
+2. **Axis width**: pan through history; the right gutter never shrinks
+   while panning (it may grow once).
+3. **Last price**: a dashed line in the bar color, with a badge on the
+   axis. Scroll the price off-screen (zoom into history); the badge pins
+   to the top / bottom edge.
+4. **Crosshair (Hold)**: long-press, then drag; the vertical line jumps
+   bar-to-bar, the horizontal line follows the finger, the axis labels
+   follow, and the chart doesn't pan. Release; it fades after about
+   1.2 s. The status line updates once per bar.
+5. **Crosshair (Sticky)**: after release it stays. Drag moves it
+   immediately; tap hides it; pinch still zooms.
+6. **Legend**: top-left O/H/L/C/Δ/V of the last bar, or of the crosshair
+   bar while shown, green / red by direction.
+7. **Local / UTC**: time labels shift by the device offset for intraday
+   data.
+
+### Known limitations / follow-ups
+
+- Daily and longer bars always use UTC dates. Named IANA zones and
+  exchange sessions are P9.
+- Bar duration is estimated from the data (no timeframe prop yet).
+- The countdown is only a slot (badge height); the timer itself is later.
+- After a dataset reset, a frame computed with a stale price range may
+  leave the axis slightly wider than needed until the next reset
+  (grow-only).
+- The crosshair clamps to the data range; it cannot inspect the empty
+  space right of the last bar.
+- The legend change is `close − open` of the bar, not versus the previous
+  close.
+- Per-frame scratch allocations in the mappers (see design decisions)
+  belong to the P8 audit.
+- Labels are left-aligned in the price axis; right-alignment and
+  non-ASCII fonts (the fallback width is the widest ASCII glyph) are not
+  handled.

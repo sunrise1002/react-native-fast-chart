@@ -1,0 +1,9 @@
+node_modules/
+lib/
+coverage/
+.DS_Store
+*.log
+.expo/
+example/ios/
+example/android/
+*.tsbuildinfo

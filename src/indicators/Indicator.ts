@@ -1,44 +1,131 @@
-import type { Candle, UnixMs } from '../data/Candle';
+import type { UnixMs } from '../data/Candle';
+import type { CandleColumns } from '../data/CandleBuffer';
+
+/*
+ * Indicator contracts (spec §13). Pure TypeScript: no React, no Skia.
+ *
+ * Indicators read the candle store's struct-of-arrays columns directly
+ * (bar `i` at `column[offset + i]`) and write their outputs into
+ * `Float64Array` columns aligned with the candle indices — no per-point
+ * objects on the hot path. `NaN` means "no value" (warm-up period,
+ * missing input). The spec's point shapes (`LinePoint`, `BandPoint`, …)
+ * are produced on demand by the adapters in `IndicatorAdapters.ts`.
+ */
+
+/** Price series an indicator reads from each bar (TradingView sources). */
+export type PriceSource =
+  'open' | 'high' | 'low' | 'close' | 'hl2' | 'hlc3' | 'ohlc4';
+
+export const PRICE_SOURCES: readonly PriceSource[] = Object.freeze([
+  'open',
+  'high',
+  'low',
+  'close',
+  'hl2',
+  'hlc3',
+  'ohlc4',
+]);
 
 /**
- * Pure indicator contract (spec §13.1). Implementations must not import
- * React or Skia. Implemented from phase P5 onwards.
+ * Numeric result of an indicator: one column per output, aligned with the
+ * candles (`outputs[k][i]` = output `k` of bar `i`).
+ *
+ * Columns may have spare capacity; slots at `index >= length` hold `NaN`.
+ * They are replaced (not resized) when they grow, so re-read `outputs`
+ * after every update. `update` may mutate and return `previous`.
  */
-export interface Indicator<TConfig, TResult> {
-  readonly id: string;
+export interface IndicatorResult<TState = unknown> {
+  outputs: Float64Array[];
+  /** Number of bars covered (equals the candle count after a compute). */
+  length: number;
+  /**
+   * Bars whose values are final: their contribution is folded into
+   * `state`. Everything from `committed` on is recomputed by the next
+   * incremental update (normally only the forming last bar).
+   */
+  committed: number;
+  /** First bar rewritten by the last `calculate` / `update` (0 = all). */
+  changedFrom: number;
+  /** Indicator-private incremental state. */
+  state: TState;
+}
+
+/**
+ * Indicator algorithm (spec §13.1, adapted to columnar input). One stateless
+ * implementation per `type`; instances are described by
+ * `IndicatorDefinition` and their results live in the indicator cache.
+ */
+export interface Indicator<TConfig, TResult = IndicatorResult> {
   readonly type: string;
 
-  calculate(candles: readonly Candle[], config: TConfig): TResult;
+  /** Full calculation over all bars of `input` (history load, spec §15.1). */
+  calculate(input: CandleColumns, config: TConfig): TResult;
 
   /**
-   * Incremental update after the candle at `changedIndex` changed or was
-   * appended. Must not recompute the whole series.
+   * Incremental update after bars from `changedIndex` on changed or were
+   * appended (spec §15.2). Must recompute only the affected tail; may fall
+   * back to `calculate` when `changedIndex` precedes the committed bars.
+   * Omitted = always recalculate.
    */
   update?(
     previous: TResult,
-    candles: readonly Candle[],
+    input: CandleColumns,
     changedIndex: number,
+    config: TConfig
+  ): TResult;
+
+  /**
+   * Older bars were inserted at the front (`count` bars, every previous
+   * index shifted). Omitted = full recalculation (spec §15.3).
+   */
+  prepend?(
+    previous: TResult,
+    input: CandleColumns,
+    count: number,
     config: TConfig
   ): TResult;
 }
 
 export interface IndicatorStyle {
   visible: boolean;
+  /** Line width, dp. Defaults to 1.5. */
   lineWidth?: number;
+  /** Line opacity `[0, 1]`. Defaults to 1. */
   opacity?: number;
-  /** Explicit colors; falls back to `ChartTheme.indicatorPalette`. */
+  /**
+   * Explicit colors, one per render series (in `IndicatorMeta.series`
+   * order); falls back to the series default, then to
+   * `ChartTheme.indicatorPalette`.
+   */
   colors?: readonly string[];
+  /** Band fill between upper and lower (bands only). Defaults to `true`. */
+  fill?: boolean;
+  /** Band fill opacity `[0, 1]`. Defaults to 0.08. */
+  fillOpacity?: number;
 }
 
 /** Serializable description of an indicator instance (spec §13.2). */
 export interface IndicatorDefinition {
   id: string;
-  /** Registry key, e.g. `'ema'`, `'rsi'`. */
+  /** Registry key, e.g. `'ema'`, `'bollinger'`. */
   type: string;
   /** Pane that hosts the indicator (`'price'` for overlays). */
   paneId: string;
   config: Readonly<Record<string, unknown>>;
   style: IndicatorStyle;
+}
+
+/**
+ * Loose input accepted by the chart API: everything except `type` is
+ * optional (id generated, pane from the registry placement, default
+ * config / style).
+ */
+export interface IndicatorInput {
+  id?: string;
+  type: string;
+  paneId?: string;
+  config?: Readonly<Record<string, unknown>>;
+  style?: Partial<IndicatorStyle>;
 }
 
 /* ---------------------------- Result types (§13.3) ---------------------------- */

@@ -88,6 +88,24 @@ export function getCandleIssue(value: unknown): CandleIssueReason | null {
   return getOhlcvIssue(row.open, row.high, row.low, row.close, row.volume);
 }
 
+/**
+ * Numeric fast path of `getCandleIssue` for already-destructured bar values
+ * (no object allocation). Used by `CandleStore` mutation methods.
+ */
+export function getBarValuesIssue(
+  time: number,
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+  volume: number
+): CandleIssueReason | null {
+  if (!isValidTime(time)) {
+    return 'INVALID_TIME';
+  }
+  return getOhlcvIssue(open, high, low, close, volume);
+}
+
 /** Type guard for a single well-formed candle (strict: volume required). */
 export function isValidCandle(value: unknown): value is Candle {
   return getCandleIssue(value) === null;

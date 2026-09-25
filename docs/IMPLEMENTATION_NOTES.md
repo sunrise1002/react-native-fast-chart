@@ -12,8 +12,11 @@ Each phase appends a section below. Keep entries short and factual.
 │   ├── index.ts          public entry
 │   ├── components/       React components (TradingChart)
 │   ├── core/             ChartTypes, ChartConfig, ChartController (interfaces)
-│   ├── data/             Candle model, validation, CandleStore, merge, aggregator (pure TS)
-│   ├── viewport/         TimeScale, VisibleRange, PriceScale, AutoScale (pure TS, worklet-safe)
+│   ├── data/             Candle model, validation, CandleStore, merge, aggregator, UiCandleSeries (pure TS)
+│   ├── viewport/         TimeScale, VisibleRange, PriceScale, AutoScale(Target) (pure TS, worklet-safe)
+│   ├── engine/           shared values, viewport/gesture worklets, store → UI sync, controller
+│   ├── render/           RenderModel, candle/grid geometry (pure TS), skia/ hooks + canvas
+│   ├── interaction/      RNGH gesture composition
 │   ├── indicators/       indicator contracts & result types (pure TS)
 │   ├── panes/            pane definitions (pure TS)
 │   ├── theme/            ChartTheme, default dark/light themes, mergeTheme
@@ -22,13 +25,12 @@ Each phase appends a section below. Keep entries short and factual.
 │   └── utils/            small shared helpers (deepMerge)
 ├── example/              Expo SDK 57 app (workspace `react-native-fast-chart-example`)
 ├── benchmarks/           plain-Node micro-benchmarks (`yarn bench`)
-├── jest/mocks/           Jest stand-ins for native modules (Skia)
+├── jest/                 setup (RNGH + Reanimated test setup) and mocks/ (Skia stand-in)
 ├── docs/                 PHASES.md, IMPLEMENTATION_NOTES.md
 └── react-native-skia-trading-chart-spec.md
 ```
 
-The spec's `src/chart/*` tree is flattened into `src/*`. Directories for later
-phases (`render/`, `interaction/`) are created by those phases.
+The spec's `src/chart/*` tree is flattened into `src/*`.
 Tests live next to the code in `__tests__/` folders (`*.test.ts[x]`).
 
 | Command                  | Purpose                                                         |
@@ -356,3 +358,281 @@ states, prepend invariance of x coordinates.
 - Only the `'linear'` price scale mode exists (log/percentage in P9+).
 - `indexToTime` for whitespace bars (future time labels) is left to P4.
 - `yarn bench` requires Node ≥ 22.18 (built-in TypeScript + `registerHooks`).
+
+---
+
+## P3 — Skia candle rendering + gesture layer
+
+### What was built
+
+- **Render model** (`src/render/RenderModel.ts`) — renderer-agnostic types
+  (no Skia): `RectList` (packed `Float32Array` x/y/w/h), `CandleGeometryBatch`
+  (4 rect lists + `mode 'candles' | 'wicks'` + `skipped`), and the line /
+  histogram / band / grid / axis-label / crosshair / pane models later
+  phases fill in. `createRectList`, `pushRect` (amortized growth).
+- **Candle geometry** (`render/candles/CandleGeometry.ts`, pure, worklet)
+  - `computeCandleMetrics` sizes bars in whole device pixels. The body is
+    `floor(barSpacing × bodyRatio × pr)`, at least 1 px. The wick is
+    `round(wickWidth × pr)`, at least 1 px. The body is trimmed by 1 px when
+    `body − wick` is odd, so the wick is exactly centered.
+  - Wick-only mode when `body < wick + 2 px` (≈ bars narrower than 2 px).
+  - `buildCandleGeometry` streams the bars in `[start, end]` into a sink
+    `{ body(bullish, x, y, w, h), wick(...) }`. The sink avoids an
+    intermediate buffer; the Skia path calls `addRect` straight from it.
+  - Bullish = `close >= open` (doji counts as bullish). Every edge is
+    snapped to the device pixel grid. Bodies and wicks are at least 1 px
+    tall.
+  - A bar is skipped when any price or projected coordinate is NaN or ±∞
+    (§33.8). The whole build returns 0 for a degenerate scale.
+  - `CandleGeometryBatch.fillCandleGeometryBatch` collects into a reusable
+    batch (tests, alternative renderers, P8 picture caches).
+- **Grid** (`render/grid/`) — `niceStep` (1/2/5 × 10ᵏ), `nicePriceStep`,
+  `niceBarStep` (whole bars, so lines stick to bars while panning), and
+  `buildGridGeometry(time, price, options, sink, priceStep?, barStep?)`.
+  The two step functions are the pluggable hook: P4 passes its axis tick
+  generators so grid and labels agree. Lines are pixel-snapped and capped
+  by `maxLines`.
+- **UI-thread data** (`data/UiCandleSeries.ts`) — see the design
+  decisions below. `createUiCandleSeries` (snapshot with headroom),
+  `writeUiBar`, `packBars` / `applyPackedBars` (6 values per bar).
+- **Engine** (`src/engine/`)
+  - `ChartSharedState`: Reanimated shared values `series`, `barSpacing`,
+    `rightOffset`, `rawOffset`, `activeGestures`, `plotWidth/Height`,
+    `priceMin/Max`, `isAtRealtime`.
+  - `ViewportActions` (worklets): `releaseViewport` (fling / spring-back),
+    `scrollToRealtime`, `resetViewport`, `showLogicalRange`, `resizePlot`,
+    `stopViewportAnimations`.
+  - `GestureActions` (worklets): `begin/endViewportGesture`,
+    `panViewport`, `zoomViewport`, `panVelocityToBars`.
+  - `StoreSync.connectStoreToUi`: `CandleStore` → `series`.
+  - `useChartReactions`: animated auto Y-scale plus the `isAtRealtime`
+    flag.
+  - `ChartControllerImpl`: `createTradingChartController` /
+    `useTradingChartController`.
+- **Skia layer** (`render/skia/`)
+  - `useCandlePaths`: exactly 4 paths (bull/bear bodies, bull/bear wicks)
+    built in one `useDerivedValue`.
+  - `useGridPath`: 1 path.
+  - `useFrameProfiler`: P1 metrics hooked into `useFrameCallback`.
+  - `SkiaChartCanvas`: background `Fill`, then a clip group holding grid,
+    wicks and bodies, then hairline separators for the price-axis gutter
+    (right, `layout.priceAxisWidth`) and the time-axis gutter (bottom,
+    `layout.timeAxisHeight`).
+  - `computePlotSize`.
+- **Gestures** (`interaction/useChartGestures.ts`, RNGH v2 + Reanimated)
+  - Structure: `Race(crosshair?, Simultaneous(pan, pinch, doubleTap))`.
+    P4 plugs the long-press crosshair in through the `crosshairGesture`
+    prop without touching the viewport gestures.
+  - **Pan**: `activeOffsetX ±8` / `failOffsetY ±8` (horizontal-only, so a
+    parent vertical `ScrollView` keeps scrolling); 1:1 drag.
+    - Touch-down stops a running fling.
+    - Rubber band while dragging past either edge (up to 15 % of the plot
+      width).
+    - Release runs `withDecay` (deceleration 0.997) with
+      `clamp + rubberBandEffect`, so a fling glides and bounces back inside
+      the bounds.
+  - **Pinch**: focal-point zoom with clamped bar spacing, simultaneous with
+    pan.
+  - **Double tap**: animated reset (initial spacing + realtime offset,
+    280 ms ease-out).
+- **`TradingChart`** (component name kept from P1; the phase table's
+  `<CandlestickChart>`)
+  - Props: `candles`, `controller`, `ref`, `theme`, `themeOverride`,
+    `config` (deep-partial, compared by value), `crosshairGesture`, `style`,
+    `testID`.
+  - Candle data is never React state.
+  - Renders happen only for prop, theme or config changes and for the first
+    layout / real size changes.
+- **Example Playground**
+  - 10 000 fixture candles (`react-native-fast-chart/testing`).
+  - Dark/light toggle.
+  - A "Jump to latest" pill driven by `isAtRealtime` through
+    `useAnimatedReaction` + `scheduleOnRN`; it re-renders only when the
+    flag flips.
+  - Debug toggle: enables `debug.profiling` and an overlay (FPS, frame
+    avg/p95, path-build avg/p95, React render count) polled every 500 ms.
+  - The P2 `EngineDemo` panel was removed; the real chart replaces it.
+- **Benchmark** — `benchmarks/render.bench.ts` (`yarn bench`, V8): one
+  frame of candle geometry takes ≈ 2 µs for 52 bars (8 dp) and ≈ 15 µs for
+  802 bars (0.5 dp). A grid frame takes ≈ 0.2 µs. The Skia `addRect` JSI
+  cost comes on top (≈ 1 call per rect).
+
+### Key design decisions
+
+- **UI-thread data access (the P2 follow-up)**
+  - Worklets cannot read JS-thread typed arrays by reference; they are
+    cloned when crossing runtimes. The chart therefore keeps one UI copy
+    (`UiCandleSeries`) in a shared value.
+  - `reset` / `prepend` / large or shrinking `patch`: a full snapshot copy
+    (O(n), on data loads only).
+  - `append` / `updateLast` / tail `patch` ≤ 512 bars: a packed
+    `Float64Array` of the changed bars, written in place on the UI thread
+    through `series.modify(fn, forceUpdate)`. O(changed bars), no snapshot.
+  - Trade-off: the UI copy doubles memory (≈ 48 B/bar, 4.8 MB for 100k
+    bars) in exchange for zero per-frame copies and O(1) realtime ticks.
+  - The copy happens per data change, never per frame.
+  - Appends while scrolled into history add the appended count to
+    `rightOffset` / `rawOffset`, so the view holds still (the P2 note
+    planned this for P7). At realtime the chart follows the new bar.
+- **Path reuse / allocation strategy**
+  - Four `SkPathBuilder`s are created once. Every rebuild runs `reset`,
+    then `addRect` per bar with one reused plain rect object (1 JSI call
+    instead of 5 for move/line/close), then `detach()` (hands the storage
+    over).
+  - New `SkPath` objects per frame are unavoidable: a shared value only
+    notifies Skia on identity change, and Skia may still reference the
+    previous frame.
+  - Per frame, allocation is a constant handful of small objects (scales,
+    metrics, sink); nothing is allocated per bar.
+  - Geometry for invisible bars is never built: visible range + 1 bar of
+    overscan per side.
+- **Mapper hygiene**
+  - A `useDerivedValue` / `useAnimatedReaction` treats every shared value
+    captured in its closure as an input. The hooks therefore destructure
+    and capture individual shared values (`frameTimeScale(plotWidth,
+barSpacing, …)`), never the state object.
+  - They never write to their own inputs, which would retrigger the mapper
+    every frame.
+  - The four path shared values are thin derived values of one frame
+    object, so all four paths are built in a single pass.
+- **Rubber band model**: gestures track the unclamped `rawOffset`; the
+  displayed `rightOffset = elasticRightOffset(raw)`. Pan and pinch share
+  it, and the last gesture to end calls `releaseViewport`, so simultaneous
+  pan + pinch compose cleanly.
+- **Auto Y-scale** (`useChartReactions` + `AutoScaleTarget`)
+  - The target is the padded low/high of the bars actually on screen
+    (overscan 0).
+  - Snap on the first frame, on a dataset reset (`resetVersion`), or when
+    the ranges don't overlap.
+  - Otherwise retarget a 160 ms ease-out `withTiming`. Retargeting every
+    frame acts as a low-pass filter, so bars entering the view don't make
+    it jitter.
+  - Changes below 1e-6 of the span are ignored.
+- **No React render per frame**
+  - All per-frame values are shared values.
+  - In `__DEV__`, `TradingChart` counts its renders with
+    `metrics.countRender()` (`snapshot().renderCount`). The gesture test
+    GS2 asserts the count does not change across a pan + fling.
+  - `onLayout` only sets state when the size really changes (TC12).
+- **Profiler** (disabled by default, `config.debug.profiling`)
+  - A `useFrameCallback` (inactive unless enabled) buffers `[timestamp,
+pathBuildMs]` pairs on the UI thread and flushes them to
+    `ChartMetrics` every 30 frames with one `scheduleOnRN`, never one JS
+    call per frame.
+  - The metrics instance is resolved at flush time, because toggling
+    profiling swaps it (TC13).
+- `createPriceScale`, `normalizePriceRange`, `clampPrice` and
+  `sanitizeRatio` are now worklets (the P2 note said otherwise).
+  `createPriceScale` still allocates one small snapshot object.
+- **Peer dependencies raised**
+  - `@shopify/react-native-skia >= 2.6.0`, for `Skia.PathBuilder` and
+    `detach`.
+  - `react-native-worklets >= 0.5.0`, for `scheduleOnUI` / `scheduleOnRN`.
+  - Verified against 2.6.2 / 0.10.1; the exact minimums were taken from the
+    upstream APIs, not tested.
+
+### Public API added (main entry)
+
+- Controller: `createTradingChartController`,
+  `useTradingChartController`, type `TradingChartHandle`.
+  - Properties: `store`, `state`, `isAtRealtime`, `metrics`.
+  - Data methods: `setData`, `appendBar`, `updateLastBar`, `prependBars`.
+  - Viewport methods: `scrollToRealtime(animated = true)`,
+    `resetZoom(animated = true)`,
+    `setVisibleRange(start, end, animated = true)`.
+- `TradingChartProps` additions: `candles`, `controller`, `ref`, `config`,
+  `crosshairGesture`.
+- Gestures: `composeChartGestures`, `GESTURE_TEST_IDS`,
+  `PAN_ACTIVATION_DP`, `DOUBLE_TAP_MAX_DELAY_MS`.
+- Geometry and model: the `RenderModel` types, `createRectList`,
+  `pushRect`, `computeCandleMetrics`, `createCandleMetrics`,
+  `buildCandleGeometry`, `createCandleGeometryBatch`,
+  `fillCandleGeometryBatch`, `niceStep`, `nicePriceStep`, `niceBarStep`,
+  `buildGridGeometry`, `DEFAULT_GRID_OPTIONS`, `snapToPixel`,
+  `lineWidthPx`, `sanitizePixelRatio`.
+- Auto-scale: `computeAutoScaleTarget`, `shouldSnapPriceRange`,
+  `priceRangeChanged`.
+- Metrics: `ChartMetrics.countRender()` and
+  `ChartMetricsSnapshot.renderCount`.
+
+### Tests
+
+- **Totals**: 773 Jest tests in 37 suites. P3 added 16 suites, ≈ 330
+  tests. Each file header holds its perspective table and every case uses
+  Given/When/Then.
+- **Pure modules** (PixelSnap, RenderModel, CandleGeometry, CandleMetrics,
+  CandleGeometryBatch, NiceStep, GridGeometry, UiCandleSeries,
+  AutoScaleTarget) are at 100 % statements / branches / functions.
+- **Geometry fuzz**: 2000 random bars × 20 random zoom / pixel-ratio
+  states check that output is finite, pixel-snapped, has positive size,
+  wicks are centered on bodies, and counts are complete.
+- **Engine, hooks, component and gesture tests** run **real Reanimated +
+  RNGH** in Jest:
+  - `jest/setup.js`: the RNGH `jestSetup` plus `setUpTests()`.
+  - The worklets Jest resolver, and `transformIgnorePatterns` covering the
+    RN packages.
+  - The worklets Babel plugin, enabled **only for `NODE_ENV=test`** in
+    `babel.config.js`. Mapper inputs come from worklet closures, as in the
+    app build; the published library still ships plain `'worklet'`
+    directives.
+  - A `setupFilesAfterEnv` hook that flushes Reanimated's frame-callback
+    registry setup before a suite fakes timers.
+  - Fake timers drive `scheduleOnUI`, animations and frame callbacks.
+- **Gestures** are fired with `react-native-gesture-handler/jest-utils`
+  (pan, fling, rubber band, pinch clamp, double tap, disabled gestures,
+  crosshair composition).
+- **Skia** is mocked (`jest/mocks/react-native-skia.tsx`): path builders
+  record their rects.
+- **Coverage**: 99.92 % statements, 99.65 % branches, 99.61 % functions.
+  Uncovered:
+  - the `__DEV__ === false` render-counter branch in `TradingChart`
+    (Jest always runs with `__DEV__`);
+  - the P1 `RenderProfiler` `Date.now` fallback.
+
+### Manual gesture verification (device / simulator, example Playground)
+
+1. **Pan**: drag slowly; the candle under the finger stays under the
+   finger (1:1). Vertical swipes don't pan (horizontal-only activation).
+2. **Fling**: flick left or right; the chart glides and decelerates.
+   Touching during the glide stops it immediately.
+3. **Edges**: drag past the newest bar (or the oldest bar plus the margin).
+   Resistance grows (rubber band). On release it springs back; a fling into
+   the edge bounces back inside.
+4. **Pinch**: pinch around a candle; that candle stays under the fingers.
+   The zoom stops at the min/max bar width. Pinching while moving the
+   fingers also pans.
+5. **Wick-only**: zoom out until bars are narrower than about 2 px; bodies
+   disappear and single-pixel wicks remain, with no gaps or blur.
+6. **Double tap**: after zooming and scrolling away, double-tap; zoom and
+   scroll animate back to the default at the latest bar.
+7. **Jump to latest**: scroll back; the pill appears. Tap it; it animates
+   to realtime and the pill disappears.
+8. **Auto Y-scale**: pan through history; the price range follows the
+   visible bars smoothly (no jumps, no jitter).
+9. **No re-render**: enable Debug; "React renders" stays constant while
+   panning, pinching or flinging. FPS should read about 60 (or 120 on
+   ProMotion) and "paths avg" should stay well under 1 ms at the default
+   zoom.
+10. **Theme**: toggle light/dark; colors switch without losing the scroll
+    position.
+11. **Nested scroll**: wrap the chart in a vertical `ScrollView`; vertical
+    swipes on the chart scroll the page.
+
+### Known limitations / follow-ups
+
+- `theme.candle.neutral` is unused; a doji is drawn bullish, per the phase
+  spec.
+- `config.viewport.overscanBars` is reserved for P8 caches. The renderer
+  uses 1 bar of overscan because paths are rebuilt every frame.
+- Realtime ticks are not coalesced: each `appendBar` / `updateLastBar`
+  makes one `scheduleOnUI` call with a tiny payload. Very high tick rates
+  should throttle upstream or wait for P8 pixel-bucket conflation.
+- Candle paths are rebuilt on every viewport change, which costs O(visible
+  bars) per frame. Picture caching and layer invalidation belong to P8.
+- `useChartGestures` stores its pan/pinch bookkeeping in `makeMutable`
+  values created inside `useMemo`; they are recreated when options change
+  mid-gesture (harmless: the gesture objects are recreated too).
+- Axes, labels, crosshair and the last-price marker are P4. The gutters
+  are reserved but empty.
+- The frame profiler measures path build time (`render` channel) and frame
+  intervals (`frame`). Skia's own draw time isn't visible from JS.

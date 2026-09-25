@@ -1,5 +1,5 @@
 import type { CandleColumns } from '../data/CandleBuffer';
-import type { IndicatorResult, PriceSource } from './Indicator';
+import type { IndicatorResult, SeriesSource } from './Indicator';
 
 /*
  * Low-level helpers shared by indicator implementations: price source
@@ -14,7 +14,7 @@ import type { IndicatorResult, PriceSource } from './Indicator';
 export function readSource(
   input: CandleColumns,
   i: number,
-  source: PriceSource
+  source: SeriesSource
 ): number {
   const p = input.offset + i;
   switch (source) {
@@ -41,6 +41,8 @@ export function readSource(
           (input.close[p] as number)) /
         4
       );
+    case 'volume':
+      return input.volume[p] as number;
     default:
       return input.close[p] as number;
   }

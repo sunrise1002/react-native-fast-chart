@@ -1,5 +1,5 @@
 import type { CandleColumns } from '../../data/CandleBuffer';
-import type { PriceSource } from '../Indicator';
+import type { SeriesSource } from '../Indicator';
 import { isFiniteValue, readSource } from '../IndicatorSeries';
 
 /**
@@ -47,7 +47,7 @@ function recompute(
   input: CandleColumns,
   i: number,
   period: number,
-  source: PriceSource,
+  source: SeriesSource,
   out: WindowSums
 ): void {
   const current = readSource(input, i, source);
@@ -84,7 +84,7 @@ export function stepWindowSums(
   input: CandleColumns,
   i: number,
   period: number,
-  source: PriceSource,
+  source: SeriesSource,
   out: WindowSums
 ): void {
   if (i % RESYNC_INTERVAL === 0) {

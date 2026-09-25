@@ -3,7 +3,7 @@
  *
  * | Case | Input / Precondition                                   | Perspective       | Expected                                  |
  * |------|--------------------------------------------------------|-------------------|-------------------------------------------|
- * | P1   | random appends / updateLast ticks (every indicator)    | Property          | update ≡ calculate (≤ 1e-9, in practice 0)|
+ * | P1   | random appends / updateLast ticks (every built-in)     | Property          | update ≡ calculate (≤ 1e-9, in practice 0)|
  * | P2   | sequence crossing the 256-bar resync boundary          | Boundary          | still identical around 255/256/257        |
  * | P3   | tail patch (`changedIndex = committed`)                | Equivalence       | incremental path, identical               |
  * | P4   | change before `committed`                              | Abnormal          | falls back to full recalculation          |
@@ -17,7 +17,11 @@ import { describe, expect, it } from '@jest/globals';
 import type { CandleColumns } from '../../data/CandleBuffer';
 import { createSeededRandom } from '../../testing/fixtures/random';
 import { bollingerModule } from '../builtins/Bollinger';
+import { atrModule } from '../builtins/Atr';
+import { macdModule } from '../builtins/Macd';
 import { emaModule, smaModule, wmaModule } from '../builtins/MovingAverages';
+import { rsiModule } from '../builtins/Rsi';
+import { volumeModule } from '../builtins/Volume';
 import type { IndicatorResult } from '../Indicator';
 import type { IndicatorModule } from '../IndicatorRegistry';
 import { columnsOf, prefix } from './indicatorTestUtils';
@@ -29,6 +33,22 @@ const CASES: Case[] = [
   ['ema 1', emaModule as IndicatorModule, { period: 1 }],
   ['wma 30 hl2', wmaModule as IndicatorModule, { period: 30, source: 'hl2' }],
   ['bb 20 2', bollingerModule as IndicatorModule, { period: 20 }],
+  ['volume ma 20', volumeModule as IndicatorModule, { maPeriod: 20 }],
+  ['rsi 14', rsiModule as IndicatorModule, { period: 14 }],
+  ['rsi 1', rsiModule as IndicatorModule, { period: 1 }],
+  ['macd 12 26 9', macdModule as IndicatorModule, {}],
+  [
+    'macd 3 5 2 hlc3',
+    macdModule as IndicatorModule,
+    {
+      fastPeriod: 3,
+      slowPeriod: 5,
+      signalPeriod: 2,
+      source: 'hlc3',
+    },
+  ],
+  ['atr 14', atrModule as IndicatorModule, { period: 14 }],
+  ['atr 1', atrModule as IndicatorModule, { period: 1 }],
 ];
 
 /** Mutable columns that simulate a realtime feed. */
@@ -43,6 +63,7 @@ function feed(capacity: number, seed: number) {
     c.high[i] = v + 1;
     c.low[i] = v - 1;
     c.close[i] = v;
+    c.volume[i] = special ? v : random() * 1000;
   };
   return { c, random, setBar };
 }

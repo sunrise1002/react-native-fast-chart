@@ -8,9 +8,15 @@ import {
   sourceParam,
   type RawIndicatorConfig,
 } from '../IndicatorConfig';
-import { isFiniteValue, readSource } from '../IndicatorSeries';
+import { readSource } from '../IndicatorSeries';
 import type { IndicatorMeta, IndicatorModule } from '../IndicatorRegistry';
 import { createStepIndicator, type StepKernel } from '../StepIndicator';
+import {
+  createSeededAverage,
+  emaAlpha,
+  stepSeededAverage,
+  type SeededAverageState,
+} from './SeededAverage';
 import {
   copyWindowSums,
   createWindowSums,
@@ -116,16 +122,10 @@ export const wmaKernel: StepKernel<MovingAverageConfig, WindowSums> = {
 
 /* ----------------------------------- EMA ----------------------------------- */
 
-export interface EmaState {
-  /** EMA of the last committed finite bar (after seeding). */
-  ema: number;
-  /** Sum / count of the finite values collected while seeding. */
-  seedSum: number;
-  seedCount: number;
-}
+export type EmaState = SeededAverageState;
 
 /**
- * `alpha = 2 / (period + 1)`, `EMA_t = price_t·alpha + EMA_(t−1)·(1 − alpha)`.
+ * `alpha = 2/(period + 1)`, `EMA_t = price_t·alpha + EMA_(t−1)·(1 − alpha)`.
  * Seeded TradingView-style (Pine `ta.ema`): the first value is the SMA of
  * the first `period` finite inputs, so the first `period − 1` bars have no
  * value. A non-finite input yields no value for that bar and is skipped
@@ -134,32 +134,15 @@ export interface EmaState {
 export const emaKernel: StepKernel<MovingAverageConfig, EmaState> = {
   type: 'ema',
   outputs: 1,
-  init: () => ({ ema: NaN, seedSum: 0, seedCount: 0 }),
+  init: createSeededAverage,
   step(state, input, i, { period, source }, outputs, commit) {
-    const out = outputs[0] as Float64Array;
-    const x = readSource(input, i, source);
-    if (!isFiniteValue(x)) {
-      out[i] = NaN;
-      return;
-    }
-    if (state.seedCount < period) {
-      const sum = state.seedSum + x;
-      const count = state.seedCount + 1;
-      const value = count === period ? sum / period : NaN;
-      out[i] = value;
-      if (commit) {
-        state.seedSum = sum;
-        state.seedCount = count;
-        state.ema = value;
-      }
-      return;
-    }
-    const alpha = 2 / (period + 1);
-    const value = x * alpha + state.ema * (1 - alpha);
-    out[i] = value;
-    if (commit) {
-      state.ema = value;
-    }
+    (outputs[0] as Float64Array)[i] = stepSeededAverage(
+      state,
+      readSource(input, i, source),
+      period,
+      emaAlpha(period),
+      commit
+    );
   },
 };
 

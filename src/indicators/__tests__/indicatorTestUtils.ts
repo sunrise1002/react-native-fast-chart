@@ -1,5 +1,5 @@
 import type { CandleColumns } from '../../data/CandleBuffer';
-import type { PriceSource } from '../Indicator';
+import type { PriceSource, SeriesSource } from '../Indicator';
 import { readSource } from '../IndicatorSeries';
 
 export interface Bar {
@@ -45,13 +45,13 @@ export function prefix(columns: CandleColumns, length: number): CandleColumns {
   return { ...columns, length };
 }
 
-function src(c: CandleColumns, i: number, s: PriceSource): number {
+function src(c: CandleColumns, i: number, s: SeriesSource): number {
   return readSource(c, i, s);
 }
 
 /* Naive O(n·p) references (independent of the rolling implementations). */
 
-export function refSma(c: CandleColumns, p: number, s: PriceSource = 'close') {
+export function refSma(c: CandleColumns, p: number, s: SeriesSource = 'close') {
   const out: number[] = [];
   for (let i = 0; i < c.length; i++) {
     if (i < p - 1) {
@@ -147,4 +147,75 @@ export function expectSeries(
       throw new Error(`index ${i}: expected ${e}, got ${a}`);
     }
   }
+}
+
+/** Seeded EMA / RMA over an arbitrary series (leading NaNs skipped). */
+export function refSeeded(values: readonly number[], p: number, alpha: number) {
+  const out: number[] = [];
+  const seed: number[] = [];
+  let avg = NaN;
+  for (const x of values) {
+    if (!Number.isFinite(x)) {
+      out.push(NaN);
+      continue;
+    }
+    if (seed.length < p) {
+      seed.push(x);
+      avg = seed.length === p ? seed.reduce((a, b) => a + b, 0) / p : NaN;
+      out.push(avg);
+      continue;
+    }
+    avg = alpha * x + (1 - alpha) * avg;
+    out.push(avg);
+  }
+  return out;
+}
+
+export function refRsi(c: CandleColumns, p: number) {
+  const closes = Array.from({ length: c.length }, (_, i) => src(c, i, 'close'));
+  const gains = closes.map((x, i) =>
+    i === 0 ? NaN : Math.max(0, x - (closes[i - 1] as number))
+  );
+  const losses = closes.map((x, i) =>
+    i === 0 ? NaN : Math.max(0, (closes[i - 1] as number) - x)
+  );
+  const g = refSeeded(gains, p, 1 / p);
+  const l = refSeeded(losses, p, 1 / p);
+  return g.map((gain, i) => {
+    const loss = l[i] as number;
+    if (Number.isNaN(gain)) {
+      return NaN;
+    }
+    return loss === 0 ? 100 : gain === 0 ? 0 : 100 - 100 / (1 + gain / loss);
+  });
+}
+
+export function refMacd(
+  c: CandleColumns,
+  fast: number,
+  slow: number,
+  sig: number
+) {
+  const closes = Array.from({ length: c.length }, (_, i) => src(c, i, 'close'));
+  const f = refSeeded(closes, fast, 2 / (fast + 1));
+  const s = refSeeded(closes, slow, 2 / (slow + 1));
+  const macd = f.map((v, i) => v - (s[i] as number));
+  const signal = refSeeded(macd, sig, 2 / (sig + 1));
+  const histogram = macd.map((v, i) => v - (signal[i] as number));
+  return { macd, signal, histogram };
+}
+
+export function refAtr(c: CandleColumns, p: number) {
+  const tr: number[] = [];
+  for (let i = 0; i < c.length; i++) {
+    const h = c.high[c.offset + i] as number;
+    const l = c.low[c.offset + i] as number;
+    if (i === 0) {
+      tr.push(h - l);
+      continue;
+    }
+    const pc = c.close[c.offset + i - 1] as number;
+    tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+  }
+  return refSeeded(tr, p, 1 / p);
 }

@@ -1,5 +1,9 @@
 import type { ColorValue } from '../theme/ChartTheme';
-import type { Indicator, IndicatorResult } from './Indicator';
+import type {
+  HistogramColorMode,
+  Indicator,
+  IndicatorResult,
+} from './Indicator';
 import type {
   IndicatorConfigValue,
   IndicatorParam,
@@ -29,6 +33,10 @@ export type IndicatorSeriesDescriptor =
       name: string;
       output: number;
       defaultColor?: ColorValue;
+      /** Default bucket coloring (overridable by the style). */
+      colorMode?: HistogramColorMode;
+      /** Default color per bucket (see `HistogramColorMode`). */
+      defaultColors?: readonly ColorValue[];
     }
   | {
       kind: 'band';
@@ -37,6 +45,37 @@ export type IndicatorSeriesDescriptor =
       lower: number;
       defaultColor?: ColorValue;
     };
+
+/**
+ * Y-scale strategy of an indicator (spec §11.2): `'price'` shares the
+ * price pane scale (overlays), `'volume'` spans `0 … max`, `'fixed'` a
+ * constant range (RSI 0–100), `'zeroCentered'` the visible min / max
+ * always including 0 (MACD), `'auto'` the visible min / max.
+ */
+export type IndicatorScaleSpec =
+  | { kind: 'price' }
+  | { kind: 'volume' }
+  | { kind: 'fixed'; min: number; max: number }
+  | { kind: 'zeroCentered' }
+  | { kind: 'auto' };
+
+export type IndicatorScaleKind = IndicatorScaleSpec['kind'];
+
+/** Legend / axis number format of an indicator's values. */
+export interface IndicatorValueFormat {
+  /** Fixed decimals (default: the chart's price decimals). */
+  decimals?: number;
+  /** Compact K / M / B notation (volume). */
+  compact?: boolean;
+}
+
+/** Horizontal guide levels of a pane indicator (RSI 30 / 50 / 70). */
+export interface IndicatorGuides {
+  /** Dashed guide lines, in indicator value units. */
+  levels: readonly number[];
+  /** Optional filled zone between two levels (overbought / oversold). */
+  band?: { upper: number; lower: number };
+}
 
 /** Static description of an indicator type (settings UI, legend, render). */
 export interface IndicatorMeta {
@@ -50,6 +89,9 @@ export interface IndicatorMeta {
   defaultConfig: Readonly<Record<string, IndicatorConfigValue>>;
   outputs: readonly IndicatorOutput[];
   series: readonly IndicatorSeriesDescriptor[];
+  /** Y-scale strategy; default `'price'` for overlays, `'auto'` for panes. */
+  scale?: IndicatorScaleSpec;
+  valueFormat?: IndicatorValueFormat;
 }
 
 /**
@@ -63,6 +105,15 @@ export interface IndicatorModule<TConfig = unknown> {
   resolveConfig(raw: RawIndicatorConfig | null | undefined): TConfig;
   /** Legend label for a resolved config, e.g. `'EMA 20'`. */
   formatLabel(config: TConfig): string;
+  /** Guide levels for a resolved config (pane indicators). */
+  guides?(config: TConfig): IndicatorGuides;
+}
+
+/** Scale strategy of `meta` with the placement default applied. */
+export function indicatorScale(meta: IndicatorMeta): IndicatorScaleSpec {
+  return (
+    meta.scale ?? { kind: meta.placement === 'overlay' ? 'price' : 'auto' }
+  );
 }
 
 /**

@@ -3,7 +3,7 @@
  *
  * | Case | Input / Precondition                               | Perspective    | Expected                                    |
  * |------|----------------------------------------------------|----------------|---------------------------------------------|
- * | R1   | built-in registry                                  | Normal         | sma, ema, wma, bollinger in order           |
+ * | R1   | built-in registry                                  | Normal         | overlays then volume, rsi, macd, atr        |
  * | R2   | register custom / get / has / unregister           | Normal         | lookups reflect changes                     |
  * | R3   | duplicate without replace / with replace           | Abnormal       | throws message / replaces                   |
  * | R4   | empty type                                         | Invalid input  | throws                                      |
@@ -19,6 +19,8 @@
  * | D3   | patch over previous (config, style, pane)          | Normal         | merged                                       |
  * | D4   | sameConfig equal / different key count / NaN       | Boundary       | true / false / Object.is                     |
  * | D5   | createIndicatorEntry label                         | Normal         | label from resolved config                   |
+ * | D6   | entry of a module with guides (RSI) / without      | Equivalence    | guides from config / undefined               |
+ * | D7   | indicatorScale: explicit / overlay / pane default  | Equivalence    | spec / price / auto                          |
  */
 import { describe, expect, it } from '@jest/globals';
 import { PRICE_PANE_ID } from '../../panes/Pane';
@@ -26,7 +28,9 @@ import {
   createIndicatorRegistry,
   registerBuiltInIndicators,
 } from '../builtins';
+import { atrModule } from '../builtins/Atr';
 import { emaModule, smaModule } from '../builtins/MovingAverages';
+import { rsiModule } from '../builtins/Rsi';
 import {
   formatIndicatorLabel,
   paramDefaults,
@@ -42,7 +46,11 @@ import {
   normalizeIndicator,
   sameConfig,
 } from '../IndicatorDefinitions';
-import { IndicatorRegistry, type IndicatorModule } from '../IndicatorRegistry';
+import {
+  indicatorScale,
+  IndicatorRegistry,
+  type IndicatorModule,
+} from '../IndicatorRegistry';
 
 const paneModule: IndicatorModule = {
   ...(emaModule as IndicatorModule),
@@ -63,6 +71,10 @@ describe('IndicatorRegistry', () => {
       'ema',
       'wma',
       'bollinger',
+      'volume',
+      'rsi',
+      'macd',
+      'atr',
     ]);
   });
 
@@ -247,5 +259,37 @@ describe('IndicatorDefinitions', () => {
     expect(entry.label).toBe('EMA 50');
     expect(entry.meta).toBe(emaModule.meta);
     expect(config).toEqual({ period: 50, source: 'close' });
+  });
+
+  it('D6: entry guides', () => {
+    // Given / When
+    const rsi = createIndicatorEntry(
+      rsiModule as IndicatorModule,
+      { type: 'rsi', config: { overbought: 80 } },
+      'r'
+    ).entry;
+    const ema = createIndicatorEntry(
+      emaModule as IndicatorModule,
+      { type: 'ema' },
+      'e'
+    ).entry;
+    // Then
+    expect(rsi.guides?.levels).toEqual([80, 50, 30]);
+    expect(ema.guides).toBeUndefined();
+    expect(rsi.label).toBe('RSI 14');
+  });
+
+  it('D7: scale strategy defaults', () => {
+    // Given
+    const pane = { ...emaModule.meta, placement: 'pane' as const };
+    // When / Then
+    expect(indicatorScale(rsiModule.meta)).toEqual({
+      kind: 'fixed',
+      min: 0,
+      max: 100,
+    });
+    expect(indicatorScale(emaModule.meta)).toEqual({ kind: 'price' });
+    expect(indicatorScale(pane)).toEqual({ kind: 'auto' });
+    expect(atrModule.formatLabel({ period: 5 })).toBe('ATR 5');
   });
 });

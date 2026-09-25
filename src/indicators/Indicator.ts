@@ -16,6 +16,9 @@ import type { CandleColumns } from '../data/CandleBuffer';
 export type PriceSource =
   'open' | 'high' | 'low' | 'close' | 'hl2' | 'hlc3' | 'ohlc4';
 
+/** Any per-bar input column: a price source or the bar volume. */
+export type SeriesSource = PriceSource | 'volume';
+
 export const PRICE_SOURCES: readonly PriceSource[] = Object.freeze([
   'open',
   'high',
@@ -102,7 +105,20 @@ export interface IndicatorStyle {
   fill?: boolean;
   /** Band fill opacity `[0, 1]`. Defaults to 0.08. */
   fillOpacity?: number;
+  /**
+   * Histogram coloring (MACD): `'trend'` = 4 colors (positive / negative ×
+   * rising / falling, TradingView), `'sign'` = 2 colors. Defaults to the
+   * series descriptor's mode.
+   */
+  histogramColorMode?: HistogramColorMode;
 }
+
+/**
+ * How histogram bars pick their color bucket: `'sign'` (0 = ≥ 0,
+ * 1 = < 0), `'trend'` (0 = ≥ 0 rising, 1 = ≥ 0 falling, 2 = < 0 falling,
+ * 3 = < 0 rising) or `'candle'` (0 = bullish bar, 1 = bearish bar; volume).
+ */
+export type HistogramColorMode = 'sign' | 'trend' | 'candle';
 
 /** Serializable description of an indicator instance (spec §13.2). */
 export interface IndicatorDefinition {

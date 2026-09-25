@@ -4,7 +4,11 @@ import type {
   IndicatorInput,
   IndicatorStyle,
 } from './Indicator';
-import type { IndicatorMeta, IndicatorModule } from './IndicatorRegistry';
+import type {
+  IndicatorGuides,
+  IndicatorMeta,
+  IndicatorModule,
+} from './IndicatorRegistry';
 
 /**
  * Active indicator instance as exposed to React / renderers: the
@@ -16,6 +20,8 @@ export interface IndicatorEntry {
   readonly definition: IndicatorDefinition;
   readonly meta: IndicatorMeta;
   readonly label: string;
+  /** Guide levels for the resolved config (pane indicators). */
+  readonly guides?: IndicatorGuides;
 }
 
 export const DEFAULT_INDICATOR_STYLE: Readonly<IndicatorStyle> = Object.freeze({
@@ -82,5 +88,14 @@ export function createIndicatorEntry(
   );
   const config = module.resolveConfig(definition.config);
   const label = module.formatLabel(config);
-  return { entry: { id, definition, meta: module.meta, label }, config };
+  const entry: IndicatorEntry = module.guides
+    ? {
+        id,
+        definition,
+        meta: module.meta,
+        label,
+        guides: module.guides(config),
+      }
+    : { id, definition, meta: module.meta, label };
+  return { entry, config };
 }

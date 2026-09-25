@@ -11,21 +11,16 @@
  * | H3   | narrow bars (spacing 1)                        | Equivalence        | wick-only: body paths empty               |
  * | H4   | no data / NaN price range / zero-height plot   | Boundary / invalid | 0 bars, all paths empty                   |
  * | H5   | profiling on / off                             | Equivalence        | buildMs finite / NaN                      |
- * | H6   | grid over a valid viewport                     | Equivalence        | horizontal + vertical rects               |
- * | H7   | grid with custom step fns / invalid plot       | Equivalence / inv. | uses them / empty path                    |
  * | F1   | flushFrameSamples pairs                        | Equivalence        | frames marked, finite builds recorded     |
  * | F2   | odd trailing value / empty / disabled metrics  | Boundary           | ignored / no-op                           |
  * | F3   | useFrameProfiler enabled / disabled            | Equivalence        | frames flushed in batches / none          |
  * | K1   | uiNow with / without performance.now           | Equiv. / fallback  | performance.now / Date.now                |
- * | P1   | computePlotSize valid / too small / NaN / ∞    | Boundary / invalid | minus gutters / 0                         |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import type { FakePath } from '../../../../jest/mocks/react-native-skia';
-import { DEFAULT_CHART_CONFIG } from '../../../core/ChartConfig';
 import { makeEngine } from '../../../engine/__tests__/engineTestUtils';
 import { createChartMetrics } from '../../../performance/ChartMetrics';
-import { computePlotSize } from '../SkiaChartCanvas';
 import { uiNow } from '../uiClock';
 import { useCandlePaths, type CandleStyle } from '../useCandlePaths';
 import {
@@ -33,7 +28,6 @@ import {
   PROFILER_FLUSH_FRAMES,
   useFrameProfiler,
 } from '../useFrameProfiler';
-import { useGridPath } from '../useGridPath';
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -153,44 +147,6 @@ describe('useCandlePaths', () => {
   });
 });
 
-describe('useGridPath', () => {
-  it('H6: draws grid lines over the plot', () => {
-    // Given
-    const { state } = engine();
-    // When
-    const { result } = renderHook(() =>
-      useGridPath(state, { lineWidth: 1, pixelRatio: 2 })
-    );
-    tick();
-    // Then: 300 px / 60 → ~5 price lines, 400 px / 90 → ~4-5 time lines
-    expect(rects(result.current)).toBeGreaterThanOrEqual(8);
-  });
-
-  it('H7: uses custom tick sources; invalid plot → empty', () => {
-    // Given
-    const { state } = engine();
-    const priceStep = () => {
-      'worklet';
-      return 250_000;
-    };
-    const barStep = () => {
-      'worklet';
-      return 1000;
-    };
-    // When
-    const custom = renderHook(() =>
-      useGridPath(state, { lineWidth: 1, pixelRatio: 1, priceStep, barStep })
-    );
-    tick();
-    const count = rects(custom.result.current);
-    state.plotWidth.value = 0;
-    tick();
-    // Then: 0, 250k, 500k, 750k, 1M horizontal; no multiple of 1000 visible
-    expect(count).toBe(5);
-    expect(rects(custom.result.current)).toBe(0);
-  });
-});
-
 describe('frame profiler', () => {
   it('F1: marks frames and records finite build times', () => {
     // Given
@@ -259,20 +215,5 @@ describe('uiNow', () => {
     // Then
     expect(perf).toBe(123);
     expect(fallback).toBe(456);
-  });
-});
-
-describe('computePlotSize', () => {
-  const layout = DEFAULT_CHART_CONFIG.layout;
-
-  it.each([
-    [464, 324, 400, 300],
-    [64, 24, 0, 0],
-    [10, 10, 0, 0],
-    [NaN, NaN, 0, 0],
-    [Infinity, Infinity, 0, 0],
-  ])('P1: canvas %p × %p → plot %p × %p', (w, h, pw, ph) => {
-    // Given / When / Then
-    expect(computePlotSize(w, h, layout)).toEqual({ width: pw, height: ph });
   });
 });

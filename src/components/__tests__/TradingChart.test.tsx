@@ -2,7 +2,8 @@
  * Test perspective table — TradingChart (Skia mocked, see jest/mocks;
  * real Reanimated + RNGH jest utils, fake timers)
  *
- * Layout 464 × 324 dp → plot 400 × 300 (gutters 64 / 24).
+ * Layout 464 × 324 dp → plot ≤ 400 × 300 (gutters ≥ 64 / 24; the price axis
+ * auto-sizes to its widest label).
  *
  * | Case | Input / Precondition                        | Perspective      | Expected                                  |
  * |------|---------------------------------------------|------------------|-------------------------------------------|
@@ -10,7 +11,7 @@
  * | TC2  | light theme                                 | Equivalence      | light background                          |
  * | TC3  | themeOverride.background                    | Equivalence      | override wins over theme                  |
  * | TC4  | style + testID                              | Equivalence      | forwarded, flex kept                      |
- * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 5 paths, bars drawn            |
+ * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 5 paths, 3 pictures, bars drawn|
  * | TC6  | grid.visible false                          | Equivalence      | 4 paths (no grid)                         |
  * | TC7  | new candles array                           | Equivalence      | store replaced                            |
  * | TC8  | controller prop + ref                       | Equivalence      | ref receives that controller              |
@@ -103,7 +104,12 @@ describe('TradingChart', () => {
     const { view, handle } = await mounted({ candles: CANDLES });
     // Then
     const { state } = handle;
-    expect([state.plotWidth.value, state.plotHeight.value]).toEqual([400, 300]);
+    expect([state.canvasWidth.value, state.canvasHeight.value]).toEqual([
+      464, 324,
+    ]);
+    expect(state.priceAxisWidth.value).toBeGreaterThanOrEqual(64);
+    expect(state.plotWidth.value + state.priceAxisWidth.value).toBe(464);
+    expect(state.plotHeight.value).toBe(300);
     expect(state.series.value.length).toBe(1000);
     expect(Number.isFinite(state.priceMin.value)).toBe(true);
     const paths = view.UNSAFE_root.findAllByType('SkiaPath' as never);
@@ -115,6 +121,9 @@ describe('TradingChart', () => {
         0
       );
     expect(wickRects).toBeGreaterThan(40);
+    expect(view.UNSAFE_root.findAllByType('SkiaPicture' as never)).toHaveLength(
+      3
+    );
   });
 
   it('TC6: omits the grid path when the grid is hidden', async () => {

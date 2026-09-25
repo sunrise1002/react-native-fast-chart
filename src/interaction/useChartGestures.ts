@@ -33,8 +33,8 @@ import {
  *   rubber-banded edges; touch-down stops a running fling.
  * - pinch: focal-point zoom, simultaneous with pan (two-finger drag pans).
  * - doubleTap: animated reset to the default zoom at realtime.
- * - crosshair (P4): pass e.g. `Gesture.Pan().activateAfterLongPress(300)`;
- *   `Race` hands the touch to whichever activates first.
+ * - crosshair: the long-press gesture from `useCrosshairGesture` (or a
+ *   custom one); `Race` hands the touch to whichever activates first.
  */
 
 /** Horizontal travel (dp) before a pan activates / vertical before it fails. */
@@ -59,7 +59,7 @@ export function composeChartGestures(
   pan: GestureType,
   pinch: GestureType,
   doubleTap: GestureType,
-  crosshair?: GestureType
+  crosshair?: GestureType | ComposedGesture
 ): ComposedGesture {
   const viewport = Gesture.Simultaneous(pan, pinch, doubleTap);
   return crosshair ? Gesture.Race(crosshair, viewport) : viewport;
@@ -69,7 +69,7 @@ export function useChartGestures(
   state: ChartSharedState,
   options: ViewportOptions,
   interaction: ChartInteractionConfig,
-  crosshair?: GestureType
+  crosshair?: GestureType | ComposedGesture
 ): ChartGestures {
   return useMemo(() => {
     const panActive = makeMutable(false);

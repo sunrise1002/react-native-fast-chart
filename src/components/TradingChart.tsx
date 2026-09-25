@@ -3,7 +3,6 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
-  useState,
   type Ref,
 } from 'react';
 import {
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import {
   GestureDetector,
+  type ComposedGesture,
   type GestureType,
 } from 'react-native-gesture-handler';
 import { scheduleOnUI } from 'react-native-worklets';
@@ -29,12 +29,14 @@ import {
 import { toViewportOptions } from '../engine/ChartSharedState';
 import { connectStoreToUi } from '../engine/StoreSync';
 import { useChartReactions } from '../engine/useChartReactions';
-import { resizePlot } from '../engine/ViewportActions';
-import { useChartGestures } from '../interaction/useChartGestures';
+import { resizeCanvas } from '../engine/LayoutActions';
 import {
-  computePlotSize,
-  SkiaChartCanvas,
-} from '../render/skia/SkiaChartCanvas';
+  useCrosshairCallback,
+  type CrosshairChangeHandler,
+} from '../interaction/useCrosshairCallback';
+import { useChartGestures } from '../interaction/useChartGestures';
+import { useCrosshairGesture } from '../interaction/useCrosshairGesture';
+import { SkiaChartCanvas } from '../render/skia/SkiaChartCanvas';
 import type { ChartTheme } from '../theme/ChartTheme';
 import { defaultDarkTheme } from '../theme/defaultDarkTheme';
 import { mergeTheme, type ChartThemeOverride } from '../theme/mergeTheme';
@@ -61,19 +63,26 @@ export interface TradingChartProps {
   /** Partial config merged over `DEFAULT_CHART_CONFIG` (compared by value). */
   config?: DeepPartial<ChartConfig>;
   /**
-   * Crosshair gesture raced against pan/pinch (reserved for P4; e.g.
-   * `Gesture.Pan().activateAfterLongPress(300)`). Keep the reference stable.
+   * Called on the JS thread when the crosshair moves to another bar (with
+   * that bar) or hides (`null`) — never per frame. Suited for haptics.
    */
-  crosshairGesture?: GestureType;
+  onCrosshairChange?: CrosshairChangeHandler;
+  /**
+   * Replaces the built-in long-press crosshair gesture (raced against
+   * pan / pinch). Keep the reference stable.
+   */
+  crosshairGesture?: GestureType | ComposedGesture;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
 /**
  * Candlestick trading chart: Skia rendering of the visible bars (4 batched
- * paths), grid, pan / pinch / fling / double-tap gestures and auto Y-scale,
- * all driven by UI-thread shared values. React renders only on prop,
- * theme, config or layout changes — never per gesture frame.
+ * paths), tick-derived grid, auto-sized price / time axes, last-price
+ * marker, long-press crosshair with OHLC legend, pan / pinch / fling /
+ * double-tap gestures and auto Y-scale, all driven by UI-thread shared
+ * values. React renders only on prop, theme, config or layout changes —
+ * never per gesture frame.
  */
 export function TradingChart({
   candles,
@@ -82,6 +91,7 @@ export function TradingChart({
   theme = defaultDarkTheme,
   themeOverride,
   config,
+  onCrosshairChange,
   crosshairGesture,
   style,
   testID,
@@ -106,8 +116,6 @@ export function TradingChart({
     () => (themeOverride ? mergeTheme(theme, themeOverride) : theme),
     [theme, themeOverride]
   );
-  // Layout is not a per-frame value: React state is fine here (spec §22).
-  const [size, setSize] = useState({ width: 0, height: 0 });
   const pixelRatio = useMemo(() => PixelRatio.get(), []);
 
   useEffect(() => {
@@ -126,20 +134,31 @@ export function TradingChart({
   }, [handle, candles]);
 
   useChartReactions(handle.state);
+  const builtInCrosshair = useCrosshairGesture(
+    handle.state,
+    resolved.crosshair,
+    resolved.interaction.crosshairEnabled
+  );
   const gestures = useChartGestures(
     handle.state,
     options,
     resolved.interaction,
-    crosshairGesture
+    crosshairGesture ?? builtInCrosshair
   );
+  useCrosshairCallback(handle.state, onCrosshairChange);
 
+  const { timeAxisHeight } = resolved.layout;
   const onLayout = (e: LayoutChangeEvent) => {
+    // Sizes live in shared values: a layout change re-renders nothing.
     const { width, height } = e.nativeEvent.layout;
-    if (width !== size.width || height !== size.height) {
-      setSize({ width, height });
-    }
-    const plot = computePlotSize(width, height, resolved.layout);
-    scheduleOnUI(resizePlot, handle.state, options, plot.width, plot.height);
+    scheduleOnUI(
+      resizeCanvas,
+      handle.state,
+      options,
+      width,
+      height,
+      timeAxisHeight
+    );
   };
 
   return (
@@ -152,10 +171,11 @@ export function TradingChart({
       >
         <SkiaChartCanvas
           state={handle.state}
+          options={options}
           theme={resolvedTheme}
-          width={size.width}
-          height={size.height}
           layout={resolved.layout}
+          axes={resolved.axes}
+          overlays={resolved.overlays}
           bodyRatio={resolved.viewport.bodyRatio}
           pixelRatio={pixelRatio}
           profiling={resolved.debug.profiling}

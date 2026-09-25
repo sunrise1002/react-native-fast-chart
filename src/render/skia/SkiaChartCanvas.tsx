@@ -1,95 +1,130 @@
-import { Canvas, Fill, Group, Path, Rect } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
+import {
+  Canvas,
+  Fill,
+  Group,
+  Path,
+  Picture,
+  Rect,
+} from '@shopify/react-native-skia';
 import { StyleSheet } from 'react-native';
-import type { ChartLayoutConfig } from '../../core/ChartConfig';
-import type { ChartSharedState } from '../../engine/ChartSharedState';
+import { useDerivedValue } from 'react-native-reanimated';
+import { estimateBarInterval } from '../../axes/TimeTicks';
+import type {
+  ChartAxesConfig,
+  ChartLayoutConfig,
+  ChartOverlaysConfig,
+} from '../../core/ChartConfig';
+import type {
+  ChartSharedState,
+  ViewportOptions,
+} from '../../engine/ChartSharedState';
 import type { ChartMetrics } from '../../performance/ChartMetrics';
 import type { ChartTheme } from '../../theme/ChartTheme';
-import type { BarStepFn, PriceStepFn } from '../grid/GridGeometry';
+import { useChartFont, useChartPaints } from './SkiaResources';
+import { useAxesLayer } from './useAxesLayer';
 import { useCandlePaths } from './useCandlePaths';
 import { useFrameProfiler } from './useFrameProfiler';
-import { useGridPath } from './useGridPath';
+import { useOverlayLayer } from './useOverlayLayer';
+import { usePriceAxisWidth } from './usePriceAxisWidth';
 
 export interface SkiaChartCanvasProps {
   state: ChartSharedState;
+  options: ViewportOptions;
   theme: ChartTheme;
-  /** Canvas size, dp. */
-  width: number;
-  height: number;
   layout: ChartLayoutConfig;
+  axes: ChartAxesConfig;
+  overlays: ChartOverlaysConfig;
   bodyRatio: number;
   pixelRatio: number;
   profiling: boolean;
   /** Current chart metrics (read when profiler samples are flushed). */
   getMetrics: () => ChartMetrics;
-  /** Grid tick sources (worklets); P4 plugs its axis ticks in. */
-  priceStep?: PriceStepFn;
-  barStep?: BarStepFn;
-}
-
-/** Plot (price pane) size for a canvas size and the reserved axis gutters. */
-export function computePlotSize(
-  width: number,
-  height: number,
-  layout: ChartLayoutConfig
-): { width: number; height: number } {
-  const w = width - layout.priceAxisWidth;
-  const h = height - layout.timeAxisHeight;
-  return {
-    width: w > 0 && w < Infinity ? w : 0,
-    height: h > 0 && h < Infinity ? h : 0,
-  };
 }
 
 /**
  * Skia scene of the chart. Layer order: background → (clipped plot) grid,
- * wicks, bodies → axis gutters and separators. The price-axis gutter
- * (right) and time-axis gutter (bottom) are reserved for P4's axes.
+ * wicks, bodies → axis separators → axes picture (labels, last price) →
+ * legend → crosshair.
  *
- * Exactly six paths are drawn regardless of the number of bars; all of
- * them are shared values rebuilt on the UI thread, so this component only
- * re-renders on theme / layout / config changes.
+ * A constant number of nodes regardless of bars or labels: five paths and
+ * three pictures, all shared values rebuilt on the UI thread, so this
+ * component only re-renders on theme / config changes. Sizes come from
+ * shared values too (the price axis auto-sizes on the UI thread).
  */
 export function SkiaChartCanvas({
   state,
+  options,
   theme,
-  width,
-  height,
   layout,
+  axes,
+  overlays,
   bodyRatio,
   pixelRatio,
   profiling,
   getMetrics,
-  priceStep,
-  barStep,
 }: SkiaChartCanvasProps) {
-  const plot = computePlotSize(width, height, layout);
+  const font = useChartFont(theme);
+  const paints = useChartPaints(theme);
+  const { series, plotWidth, plotHeight, crosshairOpacity } = state;
+  const pricePrecision = axes.pricePrecision ?? NaN;
+  const { timeAxisHeight } = layout;
+
+  const barMs = useDerivedValue(() => estimateBarInterval(series.value));
   const candles = useCandlePaths(state, {
     bodyRatio,
     wickWidth: theme.candle.wickWidth,
     pixelRatio,
     profiling,
   });
-  const grid = useGridPath(state, {
-    lineWidth: theme.grid.width,
+  const axesLayer = useAxesLayer(state, barMs, {
+    font,
+    paints,
+    gridLineWidth: theme.grid.width,
     pixelRatio,
-    priceStep,
-    barStep,
+    timeAxisHeight,
+    pricePrecision,
+    thousandsSeparator: axes.thousandsSeparator,
+    timeZone: axes.timeZone,
+    showLastPrice: overlays.lastPrice,
   });
+  const overlayLayer = useOverlayLayer(state, barMs, {
+    font,
+    paints,
+    pixelRatio,
+    timeAxisHeight,
+    pricePrecision,
+    thousandsSeparator: axes.thousandsSeparator,
+    timeZone: axes.timeZone,
+    showLegend: overlays.legend,
+    showLegendVolume: overlays.legendVolume,
+  });
+  const requiredWidth = useDerivedValue(
+    () => axesLayer.frame.value.requiredAxisWidth
+  );
+  usePriceAxisWidth(
+    state,
+    options,
+    requiredWidth,
+    layout.priceAxisWidth,
+    timeAxisHeight
+  );
   useFrameProfiler(profiling, candles.frame, getMetrics);
 
-  const clip = useMemo(
-    () => ({ x: 0, y: 0, width: plot.width, height: plot.height }),
-    [plot.width, plot.height]
-  );
+  const clip = useDerivedValue(() => ({
+    x: 0,
+    y: 0,
+    width: plotWidth.value,
+    height: plotHeight.value,
+  }));
   const hairline = 1 / pixelRatio;
+  const axisWidth = useDerivedValue(() => plotWidth.value + hairline);
 
   return (
     <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
       <Fill color={theme.background} />
       <Group clip={clip}>
         {theme.grid.visible ? (
-          <Path path={grid} color={theme.grid.color} />
+          <Path path={axesLayer.grid} color={theme.grid.color} />
         ) : null}
         <Path path={candles.bullWicks} color={theme.candle.wickBullish} />
         <Path path={candles.bearWicks} color={theme.candle.wickBearish} />
@@ -97,19 +132,24 @@ export function SkiaChartCanvas({
         <Path path={candles.bearBodies} color={theme.candle.bearish} />
       </Group>
       <Rect
-        x={plot.width}
+        x={plotWidth}
         y={0}
         width={hairline}
-        height={plot.height}
+        height={plotHeight}
         color={theme.axis.lineColor}
       />
       <Rect
         x={0}
-        y={plot.height}
-        width={plot.width + hairline}
+        y={plotHeight}
+        width={axisWidth}
         height={hairline}
         color={theme.axis.lineColor}
       />
+      <Picture picture={axesLayer.picture} />
+      <Picture picture={overlayLayer.legend} />
+      <Group opacity={crosshairOpacity}>
+        <Picture picture={overlayLayer.crosshair} />
+      </Group>
     </Canvas>
   );
 }

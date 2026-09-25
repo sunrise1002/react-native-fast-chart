@@ -34,6 +34,17 @@ export interface ChartSharedState {
   priceMax: SharedValue<number>;
   /** `true` while the last bar is on screen (or there is no data). */
   isAtRealtime: SharedValue<boolean>;
+  /** Canvas size, dp (plot + axis gutters). */
+  canvasWidth: SharedValue<number>;
+  canvasHeight: SharedValue<number>;
+  /** Current (auto-sized) price axis width, dp. */
+  priceAxisWidth: SharedValue<number>;
+  /** Bar under the crosshair (`-1` = none). */
+  crosshairIndex: SharedValue<number>;
+  /** Finger Y of the crosshair, plot space, dp. */
+  crosshairY: SharedValue<number>;
+  /** Crosshair visibility, `0` (hidden) … `1`; animates on hide. */
+  crosshairOpacity: SharedValue<number>;
 }
 
 /** Static viewport options captured by worklets (plain numbers only). */
@@ -60,6 +71,12 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
     priceMin: makeMutable(Number.NaN),
     priceMax: makeMutable(Number.NaN),
     isAtRealtime: makeMutable(true),
+    canvasWidth: makeMutable(0),
+    canvasHeight: makeMutable(0),
+    priceAxisWidth: makeMutable(config.layout.priceAxisWidth),
+    crosshairIndex: makeMutable(-1),
+    crosshairY: makeMutable(Number.NaN),
+    crosshairOpacity: makeMutable(0),
   };
 }
 

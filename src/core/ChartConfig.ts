@@ -1,3 +1,4 @@
+import type { ChartTimeZone } from '../axes/TimeZone';
 import { deepMerge, type DeepPartial } from '../utils/deepMerge';
 
 /** Developer diagnostics. All flags default to `false` (zero cost). */
@@ -9,7 +10,10 @@ export interface ChartDebugConfig {
 }
 
 export interface ChartLayoutConfig {
-  /** Width reserved for the right price axis, dp. */
+  /**
+   * Minimum width of the right price axis, dp. The axis grows to fit its
+   * widest label (never shrinks while panning; resets with the dataset).
+   */
   priceAxisWidth: number;
   /** Height reserved for the bottom time axis, dp. */
   timeAxisHeight: number;
@@ -42,11 +46,55 @@ export interface ChartInteractionConfig {
   crosshairEnabled: boolean;
 }
 
+/** Axis labels and number / time formatting (spec §19, Phase 19.1–19.3). */
+export interface ChartAxesConfig {
+  /**
+   * Fixed price decimals (asset precision, e.g. 2 for BTCUSDT, 8 for a
+   * micro-cap). `null` derives them from the tick step / price magnitude.
+   */
+  pricePrecision: number | null;
+  /** Thousands separator of price labels (`''` disables grouping). */
+  thousandsSeparator: string;
+  /**
+   * Zone of intraday time labels: `'local'` (device, DST-aware), `'utc'`
+   * or a fixed UTC offset in minutes. Daily and longer bars always use
+   * their UTC calendar date. The full policy lands in P9.
+   */
+  timeZone: ChartTimeZone;
+}
+
+/** Crosshair release behavior. */
+export type CrosshairMode = 'hold' | 'sticky';
+
+export interface ChartCrosshairConfig {
+  /**
+   * `'hold'` (TradingView): hides `holdMs` after the finger lifts.
+   * `'sticky'` (Binance): stays after release; drag moves it, tap hides it.
+   */
+  mode: CrosshairMode;
+  /** Long-press duration that activates the crosshair, ms. */
+  longPressMs: number;
+  /** `'hold'` mode: time the crosshair stays visible after release, ms. */
+  holdMs: number;
+}
+
+export interface ChartOverlaysConfig {
+  /** Last-price dashed line + axis badge. */
+  lastPrice: boolean;
+  /** OHLC legend (top-left). */
+  legend: boolean;
+  /** Include volume in the legend. */
+  legendVolume: boolean;
+}
+
 /** Static chart options. Changing them is not a per-frame operation. */
 export interface ChartConfig {
   layout: ChartLayoutConfig;
   viewport: ChartViewportConfig;
   interaction: ChartInteractionConfig;
+  axes: ChartAxesConfig;
+  crosshair: ChartCrosshairConfig;
+  overlays: ChartOverlaysConfig;
   debug: ChartDebugConfig;
 }
 
@@ -70,6 +118,21 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     panEnabled: true,
     pinchEnabled: true,
     crosshairEnabled: true,
+  }),
+  axes: Object.freeze({
+    pricePrecision: null,
+    thousandsSeparator: ',',
+    timeZone: 'local' as ChartTimeZone,
+  }),
+  crosshair: Object.freeze({
+    mode: 'hold' as CrosshairMode,
+    longPressMs: 250,
+    holdMs: 1200,
+  }),
+  overlays: Object.freeze({
+    lastPrice: true,
+    legend: true,
+    legendVolume: true,
   }),
   debug: Object.freeze({
     overlay: false,

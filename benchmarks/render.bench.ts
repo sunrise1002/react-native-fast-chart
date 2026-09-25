@@ -10,6 +10,16 @@ import {
   DEFAULT_GRID_OPTIONS,
   type GridSink,
 } from '../src/render/grid/GridGeometry';
+import { formatPrice } from '../src/axes/PriceFormat';
+import { createPriceTicks, generatePriceTicks } from '../src/axes/PriceTicks';
+import { formatTimeTick } from '../src/axes/TimeFormat';
+import {
+  createTimeTicks,
+  estimateBarInterval,
+  generateTimeTicks,
+  selectTimeInterval,
+} from '../src/axes/TimeTicks';
+import { createOffsetResolver } from '../src/axes/TimeZone';
 import { generateCandles } from '../src/testing/fixtures/generateCandles';
 import { candleRangeMinMax } from '../src/viewport/AutoScale';
 import { createPriceScale } from '../src/viewport/PriceScale';
@@ -61,22 +71,70 @@ function candleFrames(barSpacing: number): () => void {
   };
 }
 
-export function runRenderBenchmarks(): void {
-  bench('candle geometry frame, 52 bars (8 dp)', FRAMES, candleFrames(8));
-  bench('candle geometry frame, 802 bars (0.5 dp)', FRAMES, candleFrames(0.5));
-  bench('grid geometry frame', FRAMES, () => {
+/**
+ * One axes frame as `useAxesLayer` runs it: price ticks + labels, time
+ * ticks + labels (local zone), grid lines. Fresh tick buffers per frame,
+ * like the UI mapper.
+ */
+function axesFrames(barSpacing: number): () => void {
+  const columns = store.columns;
+  const barMs = estimateBarInterval(columns);
+  return () => {
     const time: TimeScaleState = {
       width: 400,
-      barSpacing: 8,
+      barSpacing,
       rightOffset: 0,
       barCount: N,
     };
-    const price = createPriceScale({ min: 100, max: 200 }, 0, 600);
-    const options = { ...DEFAULT_GRID_OPTIONS, pixelRatio: 3 };
+    const range = { startIndex: 0, endIndex: -1 };
+    let labels = 0;
     for (let f = 0; f < FRAMES; f++) {
-      time.rightOffset = -f;
-      consume(buildGridGeometry(time, price, options, sink));
+      time.rightOffset = -((f * 7) % (N / 2));
+      const price = createPriceScale({ min: 100, max: 200 }, 0, 600);
+      const priceTicks = createPriceTicks();
+      generatePriceTicks(price.min, price.max, price.height, 10, priceTicks);
+      for (let i = 0; i < priceTicks.count; i++) {
+        labels += formatPrice(
+          priceTicks.values[i] as number,
+          priceTicks.decimals
+        ).length;
+      }
+      const timeTicks = createTimeTicks();
+      const k = selectTimeInterval(barMs, barSpacing, 60);
+      getVisibleRange(time, Math.ceil(60 / barSpacing) + 1, range);
+      generateTimeTicks(
+        columns,
+        range.startIndex,
+        range.endIndex,
+        k,
+        createOffsetResolver('local'),
+        60 / barSpacing,
+        timeTicks
+      );
+      for (let i = 0; i < timeTicks.count; i++) {
+        labels += formatTimeTick(
+          timeTicks.payload[i] as number,
+          timeTicks.weights[i] as number,
+          false
+        ).length;
+      }
+      buildGridGeometry(
+        time,
+        price,
+        priceTicks,
+        timeTicks,
+        { ...DEFAULT_GRID_OPTIONS, pixelRatio: 3 },
+        sink
+      );
     }
-  });
+    check(labels > 0, 'labels formatted');
+  };
+}
+
+export function runRenderBenchmarks(): void {
+  bench('candle geometry frame, 52 bars (8 dp)', FRAMES, candleFrames(8));
+  bench('candle geometry frame, 802 bars (0.5 dp)', FRAMES, candleFrames(0.5));
+  bench('axes frame (ticks + labels + grid), 8 dp', FRAMES, axesFrames(8));
+  bench('axes frame (ticks + labels + grid), 0.5 dp', FRAMES, axesFrames(0.5));
   report('Render geometry (100k bars, sink = addRect stand-in)');
 }

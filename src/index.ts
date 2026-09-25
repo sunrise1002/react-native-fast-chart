@@ -23,11 +23,21 @@ export {
   GESTURE_TEST_IDS,
   PAN_ACTIVATION_DP,
 } from './interaction/useChartGestures';
+export {
+  CROSSHAIR_TEST_IDS,
+  STICKY_DRAG_SLOP_DP,
+} from './interaction/useCrosshairGesture';
+export type {
+  CrosshairChange,
+  CrosshairChangeHandler,
+} from './interaction/useCrosshairCallback';
 
 // Render model + geometry (renderer-agnostic, worklet-compatible)
 export type {
   AxisLabelGeometry,
   BandGeometry,
+  TextBoxMetrics,
+  TextSink,
   CandleDrawMode,
   CandleGeometryBatch,
   ChartRenderModel,
@@ -58,12 +68,95 @@ export {
 export {
   buildGridGeometry,
   DEFAULT_GRID_OPTIONS,
-  type BarStepFn,
   type GridOptions,
+  type GridPriceTicks,
   type GridSink,
-  type PriceStepFn,
+  type GridTimeTicks,
 } from './render/grid/GridGeometry';
-export { niceBarStep, nicePriceStep, niceStep } from './render/grid/NiceStep';
+export { centeredBaseline } from './render/RenderModel';
+export {
+  layoutPriceAxisLabels,
+  PRICE_LABEL_STYLE,
+  type PriceAxisLayout,
+  type ReservedSpan,
+} from './render/axes/PriceAxisRenderer';
+export {
+  layoutTimeAxisLabels,
+  TIME_LABEL_STYLE,
+  type TimeAxisLayout,
+} from './render/axes/TimeAxisRenderer';
+export {
+  computeLastPriceMarker,
+  createLastPriceMarker,
+  LAST_PRICE_PINNED_BOTTOM,
+  LAST_PRICE_PINNED_NONE,
+  LAST_PRICE_PINNED_TOP,
+  type LastPriceMarker,
+} from './render/overlays/LastPriceRenderer';
+export {
+  computeCrosshair,
+  createCrosshairFrame,
+  nearestBarIndex,
+  type CrosshairFrame,
+} from './render/overlays/CrosshairRenderer';
+export {
+  layoutOhlcHeader,
+  OHLC_STYLE_CAPTION,
+  OHLC_STYLE_DOWN,
+  OHLC_STYLE_UP,
+  type OhlcHeaderLayout,
+} from './render/overlays/OHLCHeaderRenderer';
+
+// Axes: ticks + formatting (pure, worklet-compatible)
+export {
+  autoPriceDecimals,
+  displayDecimals,
+  formatPercent,
+  formatPrice,
+  formatSignedPrice,
+  formatVolume,
+  MAX_PRICE_DECIMALS,
+  stepDecimals,
+} from './axes/PriceFormat';
+export {
+  createPriceTicks,
+  generatePriceTicks,
+  nicePriceTickStep,
+  priceTickStep,
+  priceTickTargetCount,
+  type PriceTicks,
+} from './axes/PriceTicks';
+export {
+  createTimeTicks,
+  estimateBarInterval,
+  generateTimeTicks,
+  selectTimeInterval,
+  timeIntervalMs,
+  type TimeColumn,
+  type TimeTicks,
+} from './axes/TimeTicks';
+export {
+  formatClock,
+  formatDateTime,
+  formatTimeTick,
+  TICK_WEIGHT_DAY,
+  TICK_WEIGHT_MONTH,
+  TICK_WEIGHT_TIME,
+  TICK_WEIGHT_YEAR,
+} from './axes/TimeFormat';
+export {
+  createOffsetResolver,
+  offsetAt,
+  type ChartTimeZone,
+  type OffsetResolver,
+} from './axes/TimeZone';
+export {
+  clampSpan,
+  rangesOverlap,
+  thinTicksBySpacing,
+  type WeightedTicks,
+} from './axes/LabelCollision';
+export { nextAxisWidth, requiredAxisWidth } from './axes/AxisWidth';
 export {
   lineWidthPx,
   sanitizePixelRatio,
@@ -85,8 +178,12 @@ export type {
 export {
   DEFAULT_CHART_CONFIG,
   resolveChartConfig,
+  type ChartAxesConfig,
   type ChartConfig,
+  type ChartCrosshairConfig,
   type ChartDebugConfig,
+  type ChartOverlaysConfig,
+  type CrosshairMode,
   type ChartInteractionConfig,
   type ChartLayoutConfig,
   type ChartViewportConfig,

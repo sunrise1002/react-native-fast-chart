@@ -5,7 +5,10 @@ import {
   fireGestureHandler,
   getByGestureTestId,
 } from 'react-native-gesture-handler/jest-utils';
-import { TradingChart } from '../../components/TradingChart';
+import {
+  TradingChart,
+  type TradingChartProps,
+} from '../../components/TradingChart';
 import type { ChartConfig } from '../../core/ChartConfig';
 import {
   asInternals,
@@ -18,7 +21,9 @@ import { GESTURE_TEST_IDS } from '../useChartGestures';
 /*
  * Gesture test harness: a laid-out chart (plot 400 × 300 dp, 1000 bars,
  * spacing 8, offset 5 → pan bounds [-960, 48]) driven through RNGH's
- * jest utils. Requires `jest.useFakeTimers()`.
+ * jest utils. The price axis minimum (80 dp) is wider than any label so
+ * the auto-sized axis never changes the plot width. Requires
+ * `jest.useFakeTimers()`.
  */
 
 export const CANDLES = generateCandles({ count: 1000, seed: 5 });
@@ -31,20 +36,26 @@ export function tick(ms = 50) {
 
 export async function chart(
   config?: DeepPartial<ChartConfig>,
-  crosshairGesture?: GestureType
+  crosshairGesture?: GestureType,
+  props: Partial<TradingChartProps> = {}
 ) {
-  const controller = createTradingChartController(config);
+  const merged: DeepPartial<ChartConfig> = {
+    ...config,
+    layout: { priceAxisWidth: 80, ...config?.layout },
+  };
+  const controller = createTradingChartController(merged);
   const view = await render(
     <TradingChart
       testID="chart"
       controller={controller}
       candles={CANDLES}
-      config={config}
+      config={merged}
       crosshairGesture={crosshairGesture}
+      {...props}
     />
   );
   fireEvent(view.getByTestId('chart'), 'layout', {
-    nativeEvent: { layout: { x: 0, y: 0, width: 464, height: 324 } },
+    nativeEvent: { layout: { x: 0, y: 0, width: 480, height: 324 } },
   });
   tick();
   return { view, handle: asInternals(controller) };

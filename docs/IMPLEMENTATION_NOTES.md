@@ -12,7 +12,8 @@ Each phase appends a section below. Keep entries short and factual.
 │   ├── index.ts          public entry
 │   ├── components/       React components (TradingChart)
 │   ├── core/             ChartTypes, ChartConfig, ChartController (interfaces)
-│   ├── data/             Candle model, validation/normalization (pure TS)
+│   ├── data/             Candle model, validation, CandleStore, merge, aggregator (pure TS)
+│   ├── viewport/         TimeScale, VisibleRange, PriceScale, AutoScale (pure TS, worklet-safe)
 │   ├── indicators/       indicator contracts & result types (pure TS)
 │   ├── panes/            pane definitions (pure TS)
 │   ├── theme/            ChartTheme, default dark/light themes, mergeTheme
@@ -20,13 +21,14 @@ Each phase appends a section below. Keep entries short and factual.
 │   ├── testing/          fixtures (seeded OHLCV generator); public subpath `react-native-fast-chart/testing`
 │   └── utils/            small shared helpers (deepMerge)
 ├── example/              Expo SDK 57 app (workspace `react-native-fast-chart-example`)
+├── benchmarks/           plain-Node micro-benchmarks (`yarn bench`)
 ├── jest/mocks/           Jest stand-ins for native modules (Skia)
 ├── docs/                 PHASES.md, IMPLEMENTATION_NOTES.md
 └── react-native-skia-trading-chart-spec.md
 ```
 
 The spec's `src/chart/*` tree is flattened into `src/*`. Directories for later
-phases (`viewport/`, `render/`, `interaction/`) are created by those phases.
+phases (`render/`, `interaction/`) are created by those phases.
 Tests live next to the code in `__tests__/` folders (`*.test.ts[x]`).
 
 | Command                  | Purpose                                                         |
@@ -36,6 +38,7 @@ Tests live next to the code in `__tests__/` folders (`*.test.ts[x]`).
 | `yarn lint` / `lint:fix` | ESLint (`@react-native` config) + Prettier                      |
 | `yarn test`              | Jest (`@react-native/jest-preset`)                              |
 | `yarn test:coverage`     | Jest + coverage (text summary + lcov in `coverage/`)            |
+| `yarn bench`             | micro-benchmarks, plain Node ≥ 22.18 (built-in TS), not Jest    |
 | `yarn prepare`           | bob build → `lib/module` (ESM) + `lib/typescript` (d.ts)        |
 | `yarn example start`     | Expo dev server for the example app                             |
 
@@ -146,3 +149,210 @@ The only uncovered branch is the `Date.now()` fallback of `defaultClock`
   version; web target was removed (Skia web needs CanvasKit loading).
 - Yarn reports a harmless peer warning: `@react-native/eslint-config` pulls
   `eslint-plugin-ft-flow`, which declares `eslint@^8` (template default).
+
+---
+
+## P2 — Data engine + viewport/coordinate engine
+
+### What was built
+
+All pure TypeScript, zero Skia/React imports (`src/data/`, `src/viewport/`).
+
+- **`CandleBuffer`** — struct-of-arrays storage: six `Float64Array` columns
+  (`time/open/high/low/close/volume`), bars at `[offset, offset + length)`
+  with free slots on **both** sides. Geometric growth: append and prepend
+  are amortized O(1) per bar (1000 single-bar prepends ⇒ ≤ 6 reallocations).
+- **`CandleStore`** (spec §8.2) — `setData` (one-pass fast path for clean
+  input, else `normalizeCandles`), `append`/`appendValues`/`appendMany`,
+  `updateLast`/`updateLastValues`, `updateValuesAt`, `prepend`, `splice`,
+  `clear`; reads `get`, `getRange` (end-exclusive), `timeAt`,
+  `firstTime`/`lastTime`, `findIndexByTime`, `findNearestIndex`,
+  `lowerBound`/`upperBound`, raw `columns`. Change tracking: `version` (every
+  mutation), `resetVersion`, `prependedSinceReset`, `lastChange`, and
+  `subscribe(listener)` (plain callbacks, not React) with change kinds
+  `reset | append | updateLast | prepend | patch` + `count`/`fromIndex`.
+- **`TimeSearch`** — allocation-free `lowerBound`/`upperBound`/
+  `findExactIndex`/`findNearest` over a column + offset (worklet-safe).
+- **`mergeCandles`** (Phase 1.2, §9.1) — normalizes any batch (dedupe,
+  sort, drop invalid), splits it into older | overlap | newer, rebuilds the
+  overlap with a single `splice`, then appends / prepends. Policies:
+  `'history'` (default), `'replace'`, `'keep'`.
+- **`Timeframe`** — `parseTimeframe`, `timeframeToMs`, `getBucketStart`,
+  `getNextBucketStart`; units `s m h d w M`, UTC alignment, weeks start
+  Monday 00:00 UTC, calendar months (multi-month counted from Jan 1970).
+- **`RealtimeBarAggregator`** (Phase 1.3) — `addTrade(price, qty, time)`
+  (allocation-free on the `updated` path), `upsertBar(kline)` (Binance
+  `{t,o,h,l,c,v,isClosed}`, numeric strings accepted), `applySnapshot(bars,
+'merge' | 'replace')`, `reset()`. Returns
+  `created | updated | patched | ignored | rejected`.
+- **`TimeScale`** (Phase 2.1–2.4) — `indexToX`, `xToIndex`,
+  `xToNearestIndex`, `rightEdgeIndex`, `visibleBarCount`, `candleBodyWidth`,
+  `clampBarSpacing`, `min/maxRightOffset`, `panRightOffset`,
+  `clampRightOffset`, `elasticRightOffset` (rubber band), `zoomRightOffset`
+  (focal point), `barSpacingForRange`/`rightOffsetForRange`,
+  `isLastBarVisible`.
+- **`VisibleRange`** — `getVisibleRange(state, overscan, out?)` (inclusive,
+  clamped, `{0,-1}` when empty) and `getVisibleLogicalRange`.
+- **`PriceScale`** (Phase 2.5) — `normalizePriceRange`, `createPriceScale`
+  (spec §11.1 padding), `priceToY` / `yToPrice` (inverted Y).
+- **`AutoScale`** (Phase 2.6) — `candleRangeMinMax(columns, start, end,
+out)` and generic `rangeMinMax(values, start, end, out, offset?,
+length?)` skipping `null`/`undefined`/`NaN`/±∞.
+- `CandleValidation.getBarValuesIssue` — numeric fast path used by all
+  store mutations.
+- `ChartViewportConfig` gained `bodyRatio` (0.8), `overscanBars` (20),
+  `maxRightOffsetBars` (50), `leftMarginBars` (10), `minVisibleBars` (2);
+  it structurally satisfies `TimeScaleOptions`, so `config.viewport` can be
+  passed directly.
+- Example: `example/src/components/EngineDemo.tsx` — 100k bars in a
+  `CandleStore` (bound via `useSyncExternalStore`), pan/zoom/live buttons,
+  1000-trade bursts through the aggregator, prints render range, autoscale
+  and axis range.
+
+### Key design decisions
+
+- **Store API never throws on the hot path**: invalid or out-of-order input
+  returns `false` (no mutation, no event). Only `setData` and
+  `mergeCandles` are tolerant (they normalize and report issues).
+  `prepend`/`appendMany`/`splice` are all-or-nothing.
+- **Change object is reused** (no per-tick allocation); listeners must copy
+  fields. Listener errors are isolated: all listeners run, the first error
+  is rethrown to the mutator after the mutation has been applied.
+  Pollers (e.g. a per-frame reader) compare `resetVersion` and use the
+  delta of `prependedSinceReset` as the index shift for cached indices.
+- **Conflict policy (`'history'`)**: incoming history wins for **closed**
+  bars (REST is authoritative); for the store's **last (live)** bar the two
+  are combined: `open` from history (realtime may have joined mid-bar),
+  `high = max`, `low = min`, `close` from realtime (fresher),
+  `volume = max`. `'replace'` (reconnect snapshots) always takes incoming,
+  `'keep'` only fills gaps. Race "realtime bars exist before the initial
+  history arrives" is handled by using `mergeCandles` (not `setData`) for
+  the initial load. Merge emits at most `patch → append → prepend`.
+- **Aggregator semantics**: bars are opened at the UTC bucket start; gaps
+  are never fabricated unless `fillGaps` (flat bars at previous close,
+  volume 0, capped by `maxGapFillBars`, default 10 000 — longer gaps are not
+  filled at all). Out-of-order trades: inside the live bar they update
+  high/low/volume but only a trade at least as new as the latest seen one
+  sets `close`; trades for older bars update the stored bar's high/low/volume
+  (`lateTicks: 'apply'`, default) or are dropped (`'ignore'`); trades for
+  bars missing from the store are always ignored. `isClosed` klines mark the
+  bucket final (later trades for it are ignored). A kline for the bucket
+  resets the trade-ordering state. The aggregator detects store resets
+  (symbol/timeframe switch) via `resetVersion`. `applySnapshot('replace')`
+  drops every stored bar from the snapshot's first time on (removes
+  unconfirmed / gap-filled bars).
+- **X coordinates anchored at the right edge** (TradingView model): logical
+  index `i` = bar center, right edge at `R = barCount - 0.5 + rightOffset`,
+  `x(i) = width - (R - i) * barSpacing`. Consequences: prepending history
+  never moves the viewport (tested); appending scrolls by one bar =
+  "follow realtime" for free; to hold still while scrolled back, P7 adds the
+  appended count to `rightOffset`.
+- **Pan bounds**: `rightOffset ∈ [min, max]`, `max = maxRightOffsetBars`,
+  `min` = left edge at most `leftMarginBars` before bar 0; both margins are
+  capped so ≥ `minVisibleBars` stay on screen. When the data is shorter than
+  the viewport the bounds swap, so the short series can slide between left-
+  and right-aligned. `elasticRightOffset` compresses overshoot (iOS rubber
+  band, coefficient 0.55) for use during a gesture; spring to
+  `clampRightOffset` on release.
+- **Zoom**: `zoomRightOffset(state, nextSpacing, focalX)` keeps the logical
+  index under `focalX` fixed (verified on 1000 random states to 1e-9
+  relative). Clamp the spacing first (`clampBarSpacing`); clamping the
+  offset afterwards may move the focal point at the pan bounds (intended).
+- **Worklet contract** (P3): every viewport function and `TimeSearch` is a
+  plain function over numbers / plain objects with a `'worklet'` directive,
+  no closures over classes, no allocation unless `out` is omitted (then one
+  small object). They are transformed by the consumer's Babel worklets
+  plugin (Metro transforms `node_modules`). Functions that "change" the
+  scale return scalars; the caller writes shared values. `createPriceScale`
+  and `normalizePriceRange` are **not** worklets (they allocate a snapshot;
+  call them on the JS thread or wrap as needed in P3).
+- **NaN/∞ guards**: `priceToY`/`yToPrice` return `NaN` for non-finite input
+  (renderers must skip — spec §33.8); scales are always finite: degenerate
+  ranges become `v ± 1 %` (`±1` around 0), prices clamped to ±1e300, padding
+  ratios clamped to `[0, 10]`, invalid rect → 0. Degenerate time scales
+  (spacing ≤ 0, NaN) yield empty visible ranges and unchanged offsets.
+- **Index conventions**: viewport ranges (`VisibleRange`, AutoScale) are
+  **inclusive**; `CandleStore.getRange` is end-exclusive like `slice`.
+- **AutoScale strategy decided by benchmark**: linear scan over the typed
+  columns (≈0.65 µs per 500-bar query on V8). A sparse table answers in
+  ≈0.02 µs but costs ≈2 ms + 17 levels of memory to build per 100k bars and
+  must be rebuilt/updated on every tick and prepend — not worth it.
+- **Benchmarks run in plain Node**, not Jest: Jest's vm sandbox + RN Babel
+  preset made the same binary search ~8× slower, which would misreport.
+  `benchmarks/register.mjs` resolves extensionless imports to `.ts`.
+
+### Benchmarks (`yarn bench`, Node 24.19, Apple Silicon dev machine, V8)
+
+| Benchmark                                    |          median run |   per op |
+| -------------------------------------------- | ------------------: | -------: |
+| setData 100k (clean input, fast path)        |             1.12 ms | 0.011 µs |
+| setData 100k (reversed input → normalize)    |             7.46 ms | 0.075 µs |
+| append 10k onto 100k                         |             0.21 ms | 0.021 µs |
+| updateLastValues 10k                         |             0.11 ms | 0.011 µs |
+| aggregator.addTrade 10k (100 trades per bar) |             0.45 ms | 0.045 µs |
+| prepend 99 pages × 1000 bars                 |             2.27 ms | 0.023 µs |
+| mergeCandles 1001-bar page, 1 bar overlap    |             0.05 ms | 0.052 µs |
+| findIndexByTime ×100k in 100k                |             25.4 ms | 0.254 µs |
+| frame: pan+range+autoscale+scale, 540 bars   |   7.0 ms/10k frames |  0.70 µs |
+| frame: pan+range+autoscale+scale, 1640 bars  |  18.6 ms/10k frames |  1.86 µs |
+| sparse table build (max only, 100k)          |             2.13 ms |        — |
+| sparse table query vs linear, 500 bars       | 0.017 µs vs 0.65 µs |        — |
+
+Hermes on devices will be several times slower; the per-frame cost still
+sits orders of magnitude below the 16.6 ms budget. Jest also has generous
+perf gates (100k binary searches, 1000 × 100-bar prepends, 10k autoscale
+frames).
+
+### Public API added (main entry)
+
+Runtime: `CandleStore`, `mergeCandles`, `parseTimeframe`, `timeframeToMs`,
+`getBucketStart`, `getNextBucketStart`, `RealtimeBarAggregator`,
+`getBarValuesIssue`, TimeScale functions (`indexToX`, `xToIndex`,
+`xToNearestIndex`, `rightEdgeIndex`, `visibleBarCount`, `candleBodyWidth`,
+`clampBarSpacing`, `minRightOffset`, `maxRightOffset`, `panRightOffset`,
+`clampRightOffset`, `elasticRightOffset`, `zoomRightOffset`,
+`barSpacingForRange`, `rightOffsetForRange`, `isLastBarVisible`),
+`getVisibleRange`, `getVisibleLogicalRange`, `DEFAULT_OVERSCAN_BARS`,
+`createPriceScale`, `normalizePriceRange`, `priceToY`, `yToPrice`,
+`DEFAULT_PRICE_PADDING`, `DEGENERATE_RANGE_RATIO`, `FALLBACK_PRICE_RANGE`,
+`MAX_ABS_PRICE`, `candleRangeMinMax`, `rangeMinMax`.
+Types: `CandleStoreChange`, `CandleStoreChangeKind`, `CandleStoreListener`,
+`CandleColumns`, `MergeConflictPolicy`, `MergeOptions`, `MergeResult`,
+`TimeframeSpec`, `TimeframeUnit`, `AggregateResult`, `KlineUpdate`,
+`RealtimeBarAggregatorOptions`, `SnapshotMode`, `TimeScaleState`,
+`TimeScaleOptions`, `VisibleRange`, `PriceScaleMode`, `PriceScaleOptions`,
+`PriceScaleSnapshot`.
+Internal (import by path): `TimeSearch`, `ScaleMath` (`clamp`,
+`rubberBand`, `areFinite`), `CandleBuffer`.
+
+### Tests
+
+443 Jest tests in 21 suites (P2 added 12 suites, ~280 tests; each file
+header holds its perspective table, Given/When/Then in every case,
+failure/edge cases ≥ happy paths). Coverage: 99.87 % statements, 99.81 %
+branches; **every P2 module is at 100 % statements/branches/functions**.
+Property-style tests: x↔index round trip and zoom focal preservation on
+1000 seeded random states (1e-9), visible-range size bound on 2000 random
+states, prepend invariance of x coordinates.
+
+### Known limitations / follow-ups
+
+- **UI-thread data access (P3)**: columns are `Float64Array`s on the JS
+  thread. Worklets cannot read them by reference; P3 must copy the visible
+  slice (or geometry) into shared values / Skia paths per data change, not
+  per frame. The worklet math itself is ready.
+- `mergeCandles` normalizes via `normalizeCandles` (allocates one object
+  per bar); fine for history pages, not meant for per-tick use.
+  Mid-range inserts/replacements shift the tail (`splice`, O(n − from)).
+- `'patch'` events carry only `fromIndex` + length delta; indicator caches
+  (P5) should recompute from `fromIndex`. Mid-range inserts do not update
+  `prependedSinceReset`; viewport consumers should anchor by time after a
+  `patch` with `count !== 0` before `fromIndex`.
+- Aggregator does not track per-bar last-trade time for older bars (late
+  trades never change a closed bar's close). Month timeframes use the
+  nominal 30-day `ms` only for display purposes; alignment is exact.
+- `KlineUpdate.t` is used as-is (must be the bar open time); no
+  cross-timeframe validation of stored bars.
+- Only the `'linear'` price scale mode exists (log/percentage in P9+).
+- `indexToTime` for whitespace bars (future time labels) is left to P4.
+- `yarn bench` requires Node ≥ 22.18 (built-in TypeScript + `registerHooks`).

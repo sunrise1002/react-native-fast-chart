@@ -8743,12 +8743,12 @@ __metadata:
     react-test-renderer: "npm:19.2.3"
     typescript: "npm:^6.0.3"
   peerDependencies:
-    "@shopify/react-native-skia": ">=2.0.0"
+    "@shopify/react-native-skia": ">=2.6.0"
     react: ">=19.0.0"
     react-native: ">=0.79.0"
     react-native-gesture-handler: ">=2.20.0"
     react-native-reanimated: ">=4.0.0"
-    react-native-worklets: ">=0.4.0"
+    react-native-worklets: ">=0.5.0"
   languageName: unknown
   linkType: soft
 

@@ -5,7 +5,7 @@ Each phase is implemented by one agent on its own branch/worktree, then merged i
 
 | # | Phase | Spec sections | Status |
 |---|-------|---------------|--------|
-| P1 | Library foundation: package scaffold (builder-bob), TS strict, Jest, ESLint/Prettier, example app, module skeleton, Candle model + validation, perf instrumentation, themes | §5, §7, §8.1, §24, Phase 0 | pending |
+| P1 | Library foundation: package scaffold (builder-bob), TS strict, Jest, ESLint/Prettier, example app, module skeleton, Candle model + validation, perf instrumentation, themes | §5, §7, §8.1, §24, Phase 0 | done |
 | P2 | Data + viewport engine (pure TS): CandleStore, history merge, RealtimeBarAggregator, TimeScale/X coords, visible range, pan/zoom math, PriceScale, AutoScale | §8–11, Phase 1–2 | pending |
 | P3 | Skia rendering + gestures: candle geometry, batched paths, SkiaChartCanvas, grid, pan/pinch (Reanimated + RNGH), scroll-to-realtime, public `<CandlestickChart>` component | §16–18, §22, Phase 3–4 | pending |
 | P4 | Axes + crosshair: price/time tick generators & axis renderers, last price marker, long-press crosshair, nearest candle, axis labels, OHLC header | §19, Phase 5–6 | pending |

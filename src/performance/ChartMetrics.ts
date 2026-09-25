@@ -22,6 +22,8 @@ export const METRIC_CHANNELS: readonly MetricChannel[] = [
 export interface ChartMetricsSnapshot {
   /** Frames per second derived from the average frame interval. */
   fps: number;
+  /** React renders counted with `countRender` (independent of `enabled`). */
+  renderCount: number;
   channels: Record<MetricChannel, TimingStats>;
 }
 
@@ -34,6 +36,11 @@ export interface ChartMetrics {
    * in the `frame` channel. Pass a frame timestamp (ms) or omit to use the clock.
    */
   markFrame(timestampMs?: number): void;
+  /**
+   * Counts a React render of the chart component. Always active (one
+   * integer increment) so dev builds can assert "no render per frame".
+   */
+  countRender(): void;
   snapshot(): ChartMetricsSnapshot;
   reset(): void;
 }
@@ -55,6 +62,7 @@ export function createChartMetrics(
   }
   const frame = profilers.frame;
   let lastFrame = Number.NaN;
+  let renders = 0;
 
   return {
     enabled,
@@ -72,6 +80,9 @@ export function createChartMetrics(
       }
       lastFrame = now;
     },
+    countRender() {
+      renders++;
+    },
     snapshot() {
       const channels = {} as Record<MetricChannel, TimingStats>;
       for (const name of METRIC_CHANNELS) {
@@ -80,10 +91,15 @@ export function createChartMetrics(
           : { ...EMPTY_TIMING_STATS };
       }
       const avgFrame = channels.frame.avg;
-      return { fps: avgFrame > 0 ? 1000 / avgFrame : 0, channels };
+      return {
+        fps: avgFrame > 0 ? 1000 / avgFrame : 0,
+        renderCount: renders,
+        channels,
+      };
     },
     reset() {
       lastFrame = Number.NaN;
+      renders = 0;
       for (const name of METRIC_CHANNELS) {
         profilers[name].reset();
       }

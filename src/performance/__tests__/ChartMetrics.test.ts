@@ -11,6 +11,7 @@
  * | M6   | channel timing via begin/end          | Equivalence      | recorded only in that channel            |
  * | M7   | reset                                 | State            | all channels empty, frame chain restarts |
  * | M8   | invalid capacity                      | Abnormal         | RangeError                               |
+ * | M9   | countRender ×3, disabled; then reset  | Equivalence / 0  | renderCount 3, then 0                    |
  * | B1   | scenes A–D                            | Spec conformance | counts/indicators match spec §28         |
  */
 import { describe, expect, it } from '@jest/globals';
@@ -112,6 +113,19 @@ describe('createChartMetrics', () => {
     const snapshot = metrics.snapshot();
     expect(snapshot.channels.frame.count).toBe(0);
     expect(snapshot.channels.data.count).toBe(0);
+  });
+
+  it('M9: counts renders even when disabled; reset clears them', () => {
+    // Given
+    const metrics = createChartMetrics();
+    expect(metrics.snapshot().renderCount).toBe(0);
+    // When
+    [1, 2, 3].forEach(() => metrics.countRender());
+    const counted = metrics.snapshot().renderCount;
+    metrics.reset();
+    // Then
+    expect(counted).toBe(3);
+    expect(metrics.snapshot().renderCount).toBe(0);
   });
 
   it('M8: rejects an invalid capacity', () => {

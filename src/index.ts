@@ -4,6 +4,72 @@ export {
   type TradingChartProps,
 } from './components/TradingChart';
 
+// Chart handle / controller (P3 subset of spec §21)
+export {
+  createTradingChartController,
+  useTradingChartController,
+  type TradingChartHandle,
+} from './engine/ChartControllerImpl';
+export type {
+  ChartSharedState,
+  ViewportOptions,
+} from './engine/ChartSharedState';
+export type { UiCandleSeries } from './data/UiCandleSeries';
+
+// Gestures
+export {
+  composeChartGestures,
+  DOUBLE_TAP_MAX_DELAY_MS,
+  GESTURE_TEST_IDS,
+  PAN_ACTIVATION_DP,
+} from './interaction/useChartGestures';
+
+// Render model + geometry (renderer-agnostic, worklet-compatible)
+export type {
+  AxisLabelGeometry,
+  BandGeometry,
+  CandleDrawMode,
+  CandleGeometryBatch,
+  ChartRenderModel,
+  CrosshairRenderModel,
+  GridLineGeometry,
+  GridLineOrientation,
+  HistogramGeometry,
+  LineGeometry,
+  PaneRenderModel,
+  RectList,
+  TimeAxisRenderModel,
+} from './render/RenderModel';
+export { createRectList, pushRect } from './render/RenderModel';
+export {
+  buildCandleGeometry,
+  computeCandleMetrics,
+  createCandleMetrics,
+  MIN_BODY_OVER_WICK_PX,
+  type CandleGeometrySink,
+  type CandleMetrics,
+  type CandleSeriesView,
+} from './render/candles/CandleGeometry';
+export {
+  batchSink,
+  createCandleGeometryBatch,
+  fillCandleGeometryBatch,
+} from './render/candles/CandleGeometryBatch';
+export {
+  buildGridGeometry,
+  DEFAULT_GRID_OPTIONS,
+  type BarStepFn,
+  type GridOptions,
+  type GridSink,
+  type PriceStepFn,
+} from './render/grid/GridGeometry';
+export { niceBarStep, nicePriceStep, niceStep } from './render/grid/NiceStep';
+export {
+  lineWidthPx,
+  sanitizePixelRatio,
+  snapToPixel,
+} from './render/PixelSnap';
+
 // Core types
 export type {
   Candle,
@@ -127,6 +193,12 @@ export {
   type PriceScaleSnapshot,
 } from './viewport/PriceScale';
 export { candleRangeMinMax, rangeMinMax } from './viewport/AutoScale';
+export {
+  computeAutoScaleTarget,
+  priceRangeChanged,
+  PRICE_TARGET_EPSILON,
+  shouldSnapPriceRange,
+} from './viewport/AutoScaleTarget';
 
 // Theme
 export type { ChartTheme, ColorValue } from './theme/ChartTheme';

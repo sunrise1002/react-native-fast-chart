@@ -44,6 +44,7 @@ export {
 
 // Data validation
 export {
+  getBarValuesIssue,
   getCandleIssue,
   isValidCandle,
   normalizeCandles,
@@ -54,6 +55,78 @@ export {
   type NormalizeCandlesOptions,
   type NormalizeCandlesResult,
 } from './data/CandleValidation';
+
+// Data engine
+export {
+  CandleStore,
+  type CandleStoreChange,
+  type CandleStoreChangeKind,
+  type CandleStoreListener,
+} from './data/CandleStore';
+export type { CandleColumns } from './data/CandleBuffer';
+export {
+  mergeCandles,
+  type MergeConflictPolicy,
+  type MergeOptions,
+  type MergeResult,
+} from './data/HistoryMerge';
+export {
+  getBucketStart,
+  getNextBucketStart,
+  parseTimeframe,
+  timeframeToMs,
+  type TimeframeSpec,
+  type TimeframeUnit,
+} from './data/Timeframe';
+export {
+  RealtimeBarAggregator,
+  type AggregateResult,
+  type KlineUpdate,
+  type RealtimeBarAggregatorOptions,
+  type SnapshotMode,
+} from './data/RealtimeBarAggregator';
+
+// Viewport engine (worklet-compatible math)
+export {
+  barSpacingForRange,
+  candleBodyWidth,
+  clampBarSpacing,
+  clampRightOffset,
+  elasticRightOffset,
+  indexToX,
+  isLastBarVisible,
+  maxRightOffset,
+  minRightOffset,
+  panRightOffset,
+  rightEdgeIndex,
+  rightOffsetForRange,
+  visibleBarCount,
+  xToIndex,
+  xToNearestIndex,
+  zoomRightOffset,
+  type TimeScaleOptions,
+  type TimeScaleState,
+} from './viewport/TimeScale';
+export {
+  DEFAULT_OVERSCAN_BARS,
+  getVisibleLogicalRange,
+  getVisibleRange,
+  type VisibleRange,
+} from './viewport/VisibleRange';
+export {
+  createPriceScale,
+  DEFAULT_PRICE_PADDING,
+  DEGENERATE_RANGE_RATIO,
+  FALLBACK_PRICE_RANGE,
+  MAX_ABS_PRICE,
+  normalizePriceRange,
+  priceToY,
+  yToPrice,
+  type PriceScaleMode,
+  type PriceScaleOptions,
+  type PriceScaleSnapshot,
+} from './viewport/PriceScale';
+export { candleRangeMinMax, rangeMinMax } from './viewport/AutoScale';
 
 // Theme
 export type { ChartTheme, ColorValue } from './theme/ChartTheme';

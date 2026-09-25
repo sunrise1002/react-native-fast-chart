@@ -261,8 +261,6 @@ export class RealtimeBarAggregator {
       });
       t = getNextBucketStart(t, this.timeframe);
     }
-    if (bars.length > 0) {
-      store.appendMany(bars);
-    }
+    store.appendMany(bars); // no-op for an empty list
   }
 }

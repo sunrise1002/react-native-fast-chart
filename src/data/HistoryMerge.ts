@@ -146,21 +146,15 @@ function mergeOverlap(
   const merged: Candle[] = [];
   let firstChanged = -1;
   let i = from;
-  let j = a;
-  while (i < to || j < b) {
-    const existing = i < to ? (store.get(i) as Candle) : undefined;
-    const incoming = j < b ? (candles[j] as Candle) : undefined;
-    if (
-      existing !== undefined &&
-      (incoming === undefined || existing.time < incoming.time)
-    ) {
-      merged.push(existing);
+  for (let j = a; j < b; j++) {
+    const bar = candles[j] as Candle;
+    // Existing bars between incoming ones are kept as they are.
+    while (i < to && store.timeAt(i) < bar.time) {
+      merged.push(store.get(i) as Candle);
       i++;
-      continue;
     }
-    const bar = incoming as Candle;
-    j++;
-    if (existing !== undefined && existing.time === bar.time) {
+    if (i < to && store.timeAt(i) === bar.time) {
+      const existing = store.get(i) as Candle;
       const next = resolve(existing, bar, i === liveIndex, policy);
       i++;
       if (!sameValues(next, existing)) {
@@ -178,6 +172,7 @@ function mergeOverlap(
       merged.push(bar);
     }
   }
+  // `to` is the upper bound of the last incoming time, so i === to here.
   if (firstChanged < 0) {
     return;
   }

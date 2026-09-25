@@ -17,6 +17,7 @@
  * | M12  | unsorted batch with duplicates                         | Abnormal          | normalized, last duplicate wins                  |
  * | M13  | realtime bars exist, initial history arrives late      | Race (§9.1)       | history prepended, live bar kept                 |
  * | M14  | batch spanning older + overlap + newer                 | Ordering          | events patch → append → prepend                  |
+ * | M15  | sparse batch inside the stored range                   | Equivalence       | untouched bars in between are kept               |
  */
 import { describe, expect, it } from '@jest/globals';
 import type { Candle } from '../Candle';
@@ -217,5 +218,19 @@ describe('mergeCandles', () => {
     // Then
     expect(events).toEqual(['patch:0@1', 'append:1@3', 'prepend:1@0']);
     expect(minutes(store)).toEqual([8, 10, 11, 12, 14]);
+  });
+
+  it('M15: sparse overlap keeps the bars in between', () => {
+    // Given: 0..6
+    const store = new CandleStore(bars(0, 6));
+    const events = kinds(store);
+    // When: corrections for 2 and 5 only
+    const result = mergeCandles(store, [bar(2, 1), bar(5, 1)]);
+    // Then
+    expect(result.replaced).toBe(2);
+    expect(store.getRange(0, 7).map((c) => c.close)).toEqual([
+      100, 101, 1, 103, 104, 1, 106,
+    ]);
+    expect(events).toEqual(['patch:0@2']);
   });
 });

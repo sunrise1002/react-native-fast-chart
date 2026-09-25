@@ -6,9 +6,11 @@
  */
 import { runDataBenchmarks } from './data.bench';
 import { sink } from './harness';
+import { runRenderBenchmarks } from './render.bench';
 import { runViewportBenchmarks } from './viewport.bench';
 
 console.log(`Node ${process.version}`);
 runDataBenchmarks();
 runViewportBenchmarks();
+runRenderBenchmarks();
 console.log(`\n(sink ${sink() !== 0 ? 'ok' : 'empty'})`);

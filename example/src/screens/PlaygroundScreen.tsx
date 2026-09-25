@@ -1,40 +1,20 @@
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  DEFAULT_CHART_CONFIG,
   TradingChart,
-  defaultClock,
   defaultDarkTheme,
   defaultLightTheme,
-  normalizeCandles,
 } from 'react-native-fast-chart';
-import { generateCandles } from 'react-native-fast-chart/testing';
+import { EngineDemo } from '../components/EngineDemo';
 
 export type ThemeMode = 'dark' | 'light';
-
-const CANDLE_COUNT = 100_000;
-
-interface DatasetInfo {
-  count: number;
-  dropped: number;
-  generateMs: number;
-  normalizeMs: number;
-}
-
-/** Generates and normalizes the demo dataset once, reporting timings. */
-function buildDataset(): DatasetInfo {
-  const t0 = defaultClock();
-  const raw = generateCandles({ count: CANDLE_COUNT, seed: 42 });
-  const t1 = defaultClock();
-  const { candles, issues } = normalizeCandles(raw);
-  const t2 = defaultClock();
-  return {
-    count: candles.length,
-    dropped: issues.length,
-    generateMs: t1 - t0,
-    normalizeMs: t2 - t1,
-  };
-}
 
 interface PlaygroundScreenProps {
   mode: ThemeMode;
@@ -46,7 +26,8 @@ export function PlaygroundScreen({
   onModeChange,
 }: PlaygroundScreenProps) {
   const theme = mode === 'dark' ? defaultDarkTheme : defaultLightTheme;
-  const dataset = useMemo(buildDataset, []);
+  const { width } = useWindowDimensions();
+  const plotWidth = width - DEFAULT_CHART_CONFIG.layout.priceAxisWidth;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.surface }]}>
@@ -64,13 +45,7 @@ export function PlaygroundScreen({
           </Text>
         </Pressable>
       </View>
-      <Text style={[styles.info, { color: theme.axis.textColor }]}>
-        {`${dataset.count.toLocaleString()} candles · generated in ${dataset.generateMs.toFixed(
-          0
-        )} ms · normalized in ${dataset.normalizeMs.toFixed(0)} ms · dropped ${
-          dataset.dropped
-        }`}
-      </Text>
+      <EngineDemo theme={theme} width={plotWidth} />
       <TradingChart theme={theme} style={styles.chart} />
     </SafeAreaView>
   );
@@ -92,6 +67,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  info: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
   chart: { flex: 1 },
 });

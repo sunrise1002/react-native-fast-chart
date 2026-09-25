@@ -44,6 +44,7 @@ export const FALLBACK_PRICE_RANGE: Readonly<PriceRange> = Object.freeze({
 });
 
 function sanitizeRatio(value: number | undefined): number {
+  'worklet';
   if (value === undefined || Number.isNaN(value)) {
     return DEFAULT_PRICE_PADDING;
   }
@@ -51,6 +52,7 @@ function sanitizeRatio(value: number | undefined): number {
 }
 
 function clampPrice(value: number): number {
+  'worklet';
   return value < -MAX_ABS_PRICE
     ? -MAX_ABS_PRICE
     : value > MAX_ABS_PRICE
@@ -65,6 +67,7 @@ function clampPrice(value: number): number {
  * `v ± |v| * DEGENERATE_RANGE_RATIO` (`±1` around 0).
  */
 export function normalizePriceRange(min: number, max: number): PriceRange {
+  'worklet';
   let lo = Number.isFinite(min) ? clampPrice(min) : NaN;
   let hi = Number.isFinite(max) ? clampPrice(max) : NaN;
   if (Number.isNaN(lo) && Number.isNaN(hi)) {
@@ -101,6 +104,7 @@ export function createPriceScale(
   height: number,
   options: PriceScaleOptions = {}
 ): PriceScaleSnapshot {
+  'worklet';
   const { min, max } = normalizePriceRange(range.min, range.max);
   const span = max - min;
   const displayMin = clampPrice(

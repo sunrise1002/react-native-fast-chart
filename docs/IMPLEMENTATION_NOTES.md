@@ -857,3 +857,277 @@ pathBuildMs]` pairs on the UI thread and flushes them to
 - Labels are left-aligned in the price axis; right-alignment and
   non-ASCII fonts (the fallback width is the widest ASCII glyph) are not
   handled.
+
+## P5 — Indicator framework + overlay indicators
+
+### What was built
+
+- **Contracts** (`indicators/Indicator.ts`): `Indicator<TConfig, TResult>`
+  with `calculate` plus optional incremental `update` and `prepend`.
+  - `IndicatorResult` holds one `Float64Array` column per output. `NaN`
+    marks warm-up and missing values. It also tracks `length`,
+    `committed`, `changedFrom` and the opaque recursion `state`.
+  - Other types: `PriceSource` (`open` … `ohlc4`), `IndicatorDefinition`,
+    `IndicatorStyle` and the loose `IndicatorInput` (public API).
+- **Step kernels** (`StepIndicator.ts`): a recursive indicator is written
+  as one `step` per bar and gets exact incremental updates for free (see
+  the design decisions).
+- **Series helpers**: `readSource`, amortized column growth and
+  `isFiniteValue` (`IndicatorSeries.ts`). `WindowSums` provides O(1)
+  rolling sum, sum of squares and weighted sum for SMA, WMA and BB.
+- **Built-ins** (`indicators/builtins/`):
+  - SMA, WMA.
+  - EMA: SMA-seeded over the first `period` finite values, then
+    `α = 2/(p+1)`, matching TradingView `ta.ema`.
+  - Bollinger Bands: population σ like `ta.stdev`. Outputs are
+    upper / middle / lower.
+  - All have configurable source and period (1…5000). BB also has a
+    `stdDev` from 0.001 to 50.
+- **Param schema and registry**:
+  - `IndicatorConfig.ts` resolves configs tolerantly (defaults, clamping,
+    integer rounding; never throws) and formats labels (`EMA 20`,
+    `BB 20 2`, `SMA 50 hl2`).
+  - `IndicatorRegistry` stores an `IndicatorModule` per type: `meta`
+    (name, short name, placement, params, default config, outputs,
+    series descriptors of kind line / histogram / band), the indicator,
+    `resolveConfig` and `formatLabel`.
+  - `createIndicatorRegistry()` registers the built-ins.
+- **Engine** (`IndicatorEngine.ts`), one per chart and bound to its
+  `CandleStore`:
+  - API: `add` / `remove` / `update` / `setIndicators` (declarative,
+    matched by id), `getEntries` (a stable snapshot for
+    `useSyncExternalStore`), `getResult`, `subscribeEntries`,
+    `subscribeResults`, `snapshotUpdates`, `flush`, `dispose`.
+  - Supporting modules:
+    - `IndicatorCache`: keyed by id, validated by dataset version and
+      config version.
+    - `IndicatorScheduler`: coalesces store changes into one flush per
+      frame via `requestAnimationFrame`.
+    - `IndicatorCompute`: the backend seam, with the synchronous v1
+      backend that picks incremental vs full per indicator and isolates
+      failures.
+    - `IndicatorDefinitions`: normalization and entries.
+- **Adapters** (`IndicatorAdapters.ts`) convert columns to the spec's
+  `LinePoint[]`, `MultiLineResult`, `BandPoint[]` and `HistogramPoint[]`
+  for API consumers. They allocate per bar, so they stay off hot paths.
+- **UI sync**:
+  - `UiIndicatorSet.ts` + `engine/IndicatorSync.ts` mirror results into
+    `state.indicators` (a shared value). Each flush makes one
+    `scheduleOnUI` call carrying either a full snapshot or a packed tail
+    of ≤ 512 bars.
+  - `isSeriesAligned` guards against results from a previous dataset.
+- **Rendering**:
+  - `render/indicators/LineGeometry.ts` (pure worklets):
+    `buildLineGeometry` draws one polyline per series; `NaN` / ±∞ break
+    the line and |y| is clamped to 1e6. `buildBandFill` draws one closed
+    polygon per finite run.
+  - `OverlayRenderSpec.ts` resolves strokes, fills and legend values.
+    Colors come from the style, then the series default, then the theme
+    `indicatorPalette` (cycled), then a fallback. It also resolves width,
+    opacity and fill opacity.
+  - `render/skia/IndicatorPaints.ts` creates the paints once per spec
+    change.
+  - `useIndicatorLayer` records all overlays into a single `SkPicture`
+    on the UI thread: every band fill first, then every line, with one
+    reused `SkPathBuilder`. The node count stays constant however many
+    indicators are active.
+- **Legend**: `render/overlays/IndicatorLegendRenderer.ts` draws one row
+  per overlay under the OHLC header (`EMA 20  65,432.10`). Values come
+  from the crosshair bar (or the last bar) and use the series colors.
+  Rows are drawn in the existing legend picture.
+- **Auto-scale**: `computeAutoScaleTarget` accepts a `PriceRangeExtender`.
+  `useChartReactions` widens the visible range with the aligned overlay
+  values (TradingView-like), so bands never leave the pane.
+- **Wiring**:
+  - `TradingChart` has a new `indicators` prop (compared by value).
+  - `TradingChartHandle` gained `indicators`, `addIndicator`,
+    `removeIndicator`, `updateIndicator`, `setIndicators` and
+    `getIndicators`.
+  - The `indicator` metrics channel times each publishing flush. The
+    `render` channel now sums the candle path and indicator picture
+    build times.
+- **Example**:
+  - The Playground has an "Ind" toggle (EMA 20, EMA 50, BB 20 2).
+  - A new **Benchmark** screen runs the §36 gate with a synthetic feed
+    (see below).
+  - `DebugOverlay` shows indicator timings and extra feed lines.
+  - A bottom switch selects the screen.
+
+### Key design decisions
+
+- **Peek / commit = exact incremental updates.** After every compute,
+  bars `[0, n−1)` are folded into `state` (committed). The still-forming
+  last bar is only *peeked* (`step(..., commit=false)` leaves `state`
+  untouched).
+  - An update from `changedIndex >= committed` (updateLast, append, tail
+    patch) commits the newly closed bars and peeks the new last bar:
+    O(changed bars), usually O(1).
+  - Because the full calculation runs the identical step sequence,
+    incremental results are **bit-identical** to a full recalculation.
+    The property tests assert this (≤ 1e-9; in practice 0).
+  - Earlier changes, shrinking input and prepends fall back to
+    `calculate` (spec §15.3).
+- **Deterministic resync.** `WindowSums` recomputes the window exactly
+  whenever `i % 256 === 0` (by bar index, so full and incremental runs
+  resync at the same bars). This bounds drift and refreshes `shift`.
+  Sums are relative to `shift` (a recent value), which avoids
+  catastrophic cancellation in `sumSq/p − mean²` at large price levels.
+  Bollinger zeroes variances below `1e-10 × meanSq` (rounding residue).
+  Otherwise a flat window would get a √noise width, which a golden test
+  caught.
+- **NaN semantics (TradingView `na`).** Non-finite inputs are counted,
+  not summed. SMA, WMA and BB are `NaN` while a bad value is inside the
+  window. EMA skips the bar (`NaN` output, recursion unchanged). Seeding
+  collects finite values only.
+- **Scheduling.** Store listeners only accumulate `{full, fromIndex}`.
+  Append / patch keep the minimum index, updateLast uses the last bar,
+  reset / prepend force a full recalculation. One flush runs per
+  animation frame, so a burst of ticks costs one incremental step per
+  indicator. `flush()` forces it (tests, reads). A config change bumps
+  `configVersion` and marks the task dirty (full recalc). A style-only
+  change re-renders without recomputing.
+- **Backend seam.** `IndicatorBackend.compute(dataset, tasks, work,
+  cache, updates)` is the only compute entry point. A worker or native
+  backend can replace the synchronous one without touching the store
+  wiring, the UI sync or the renderers.
+- **Failure isolation.** If a (custom) indicator throws, its cache entry
+  is dropped and a `removed` update is published. The others still
+  compute, and the first error is rethrown after publishing, so it
+  surfaces in dev. Unknown types throw from `add` / `setIndicators`;
+  `setIndicators` validates every type before changing anything.
+- **≤ 1 frame lag, never misaligned.** Candles reach the UI immediately
+  (StoreSync) while indicators arrive at the next flush. Each UI series
+  carries `resetVersion` + `firstTime`. Renderers, the legend and the
+  auto-scale skip series that don't match the displayed candles, so
+  after a reset or prepend nothing shifted is drawn for that frame.
+- **Transfer cost.** A realtime tick ships `outputs × changed bars`
+  values (typically 1–2 per output) in one packed `Float64Array`. The UI
+  columns keep 256 slots of headroom and grow ×2.
+- **Rendering.**
+  - A single picture for all overlays avoids React nodes per indicator
+    (§33: batch drawing; no React state per frame).
+  - Only the visible slice (plus overscan) is walked.
+  - Paints are created on the JS thread once per spec change.
+  - The picture is rebuilt only when its inputs change (viewport, price
+    range, candles, indicator revision).
+- **Pure TS core.** Nothing under `src/indicators/` imports Skia or
+  React (§33.1). The worklet helpers (`UiIndicatorSet`, `LineGeometry`,
+  the legend layout) are plain functions tested in Node.
+
+### §36 benchmark gate (10k candles, ~200 visible, EMA 20 + EMA 50, 10–20 updates/s)
+
+The gate has two parts:
+
+1. **Node micro-benchmarks** (`yarn bench`, Node 24.19, Apple Silicon,
+   V8), in `benchmarks/indicators.bench.ts`:
+
+   | Benchmark | median run (ms) | per op (µs) |
+   | --- | ---: | ---: |
+   | full calculate EMA 20, 10k bars | 0.094 | 94 |
+   | full calculate BB 20 2, 10k bars | 0.202 | 202 |
+   | full calculate SMA / WMA / EMA / BB, 100k bars | 0.85–1.95 | 850–1950 |
+   | **§36 tick**: store update + EMA20/EMA50 flush + pack + apply | 1.752 / 2000 ticks | **0.88** |
+   | tick: store + BB20 flush + pack + apply | 1.312 / 2000 ticks | 0.66 |
+   | **§36 frame**: one EMA line, 200 visible bars (×2 for both EMAs) | 5.387 / 2000 frames | **2.7** |
+   | frame: BB fill + 3 lines, 200 visible bars | 28.700 / 2000 frames | 14.4 |
+
+   At 20 updates/s the JS thread spends about 18 µs/s on indicators, and
+   the UI thread about 5.4 µs per frame on EMA geometry. Even assuming
+   Hermes is 10–20× slower than V8, that is < 0.5 ms per tick and
+   < 0.1 ms per frame, far inside the 16.7 ms frame budget. The gate
+   **passes** on these measurements, so no further optimization was
+   needed in P5.
+2. **Device check (manual, pending on hardware)**:
+   1. Open the example app and switch to **Benchmark** (bottom switch).
+   2. The screen loads 10k candles, sets the bar spacing so about 200
+      bars are visible, adds EMA 20 + EMA 50, turns profiling on and
+      starts a synthetic feed. The feed moves the last bar at 10 or
+      20 Hz and opens a new bar every 60 ticks.
+   3. Read FPS, frame avg/p95, "paths" (candles + indicator picture
+      build) and "indicators" (JS flush) from the overlay while the feed
+      runs, and while panning and zooming.
+   4. Suggested pass criteria: ≥ 58 FPS, frame p95 ≤ 20 ms, indicator flush p95
+      ≤ 1 ms.
+
+   This environment has no device or simulator, so the on-device numbers
+   still have to be recorded by the tech lead / QA.
+
+### Public API added (main entry)
+
+- **Contracts**: `PRICE_SOURCES`, `IndicatorInput`, `IndicatorResult`,
+  `PriceSource`, `IndicatorRegistry`, `IndicatorMeta` / `IndicatorModule`
+  / `IndicatorOutput` / `IndicatorPlacement` / `IndicatorSeriesDescriptor`.
+- **Custom-indicator helpers**:
+  - `createStepIndicator` + `StepKernel`.
+  - Config: `periodParam`, `sourceParam`, `resolveNumberParam`,
+    `resolveSourceParam`, `paramDefaults`, `formatIndicatorLabel`,
+    `MAX_INDICATOR_PERIOD`.
+  - Series: `readSource`, `isFiniteValue`, `createIndicatorResult`,
+    `ensureResultCapacity`.
+- **Built-ins**: `smaModule`, `emaModule`, `wmaModule`,
+  `bollingerModule`, `BOLLINGER_UPPER` / `_MIDDLE` / `_LOWER`,
+  `DEFAULT_MA_PERIOD`, `createIndicatorRegistry`,
+  `registerBuiltInIndicators`.
+- **Engine**: `IndicatorEngine` (+ options, `IndicatorPatch`,
+  `IndicatorUpdate`, listener types), `IndicatorEntry`.
+- **Adapters**: `toLinePoints`, `toMultiLine`, `toBandPoints`,
+  `toHistogramPoints`, `histogramPolarity`.
+- **Geometry**: `buildLineGeometry`, `buildBandFill`,
+  `resolveOverlaySpecs`, `layoutIndicatorLegend` (+ style constants),
+  `UiIndicatorSet` types.
+- **Component and handle**: `TradingChart` `indicators` prop;
+  `TradingChartHandle` indicator methods.
+
+### Tests
+
+- Every new test file starts with a perspective table and uses
+  Given / When / Then. Failure and boundary cases outnumber happy paths.
+- **Golden tests**:
+  - Hand-computed SMA / WMA / EMA / BB.
+  - 2000 generated bars compared against naive O(n·p) references at
+    periods 1 / 7 / 20 / 200 / 300 and every price source.
+- **Property tests**: random append / updateLast sequences, the 256-bar
+  resync boundary, NaN / ±∞ ticks and growth from empty. After every
+  tick, incremental results must equal the full recalculation for every
+  built-in.
+- **Edge cases**:
+  - Period 1, period = length ± 1, period > length.
+  - Empty input, single bar, physical buffer offsets.
+  - NaN inside the window and at the resync bar.
+  - 1e12 prices, 1e300 values (y clamp).
+- **Engine**: coalescing, reset / prepend, config vs style vs type
+  changes (a type change keeps the display position), `setIndicators`
+  cache reuse and atomic validation, duplicate / unknown ids, faulty
+  indicators, indicators without `update`, profiler, dispose.
+- **UI and render**: pack / apply (512 / 513 boundary, growth, shrink,
+  inapplicable tails), alignment, auto-scale extension, the Skia layer
+  (fills before strokes, empty / unaligned / all-NaN), paints, legend
+  rows, `TradingChart` `indicators` prop (by-value comparison, unknown
+  type), controller methods.
+- The Skia mock records `moveTo` / `lineTo` / `close` path commands and
+  `drawPath`.
+- **Counts**: 1309 tests in 69 suites (P4: 1124). Coverage 99.85 %
+  statements, 99.71 % branches; all new indicator / render modules are
+  at 100 % statements. Remaining uncovered: the `TradingChart` `__DEV__`
+  false branch and the defensive `?? paints.axisText` fallback in
+  `useOverlayLayer`.
+
+### Known limitations / follow-ups
+
+- Pane-placement indicators (`placement: 'pane'`, histograms) are
+  computed and exposed but not rendered until the P6 pane system.
+- `prepend` is not implemented incrementally by the built-ins; history
+  pagination triggers a full recalculation (≈ 0.1–0.2 ms per indicator at
+  10k bars in Node). P7 can add a real `prepend` for long histories.
+- A mid-range `patch` that inserts bars without changing bar 0 keeps the
+  alignment keys, so it can show shifted values for one frame until the
+  flush.
+- Compute runs on the JS thread (synchronous backend). The backend seam
+  is ready for a worker / native implementation if P8 profiling asks for
+  it.
+- The legend shows raw values with the chart's price precision; per-
+  indicator precision and value formatting are P7 / P9 settings.
+- The band fill walks the visible slice twice per run (drawability
+  scan). It measures 14 µs / frame for BB in Node; P8 may merge the
+  passes.
+- On-device §36 numbers still have to be recorded (see above).

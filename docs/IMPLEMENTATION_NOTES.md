@@ -1547,3 +1547,149 @@ pulseDurationMs = 700 }` and
 - On-device verification of the manual test above is still pending.
 - `ChartControllerImpl.ts` is ~317 lines, slightly above the guideline;
   it is mostly one-line delegations.
+
+## P8 — Rendering and large-dataset performance
+
+Measurement methods, before/after numbers, the allocation audit and the
+Skia strategy experiments are in [`PERFORMANCE.md`](./PERFORMANCE.md).
+
+### What was built
+
+- **Min/max pyramid** (`data/MinMaxPyramid.ts`)
+  - Power-of-two levels of bucket minima / maxima over a pair of columns.
+  - `syncPyramid(..., from)` re-syncs only a tail: one leaf plus its
+    ancestors on a realtime tick.
+  - `pyramidRangeMinMax` is an O(log n) range query.
+  - NaN bounds are treated as an empty range.
+- **Render cache** (`render/conflation/RenderCache.ts`,
+  `ChartSharedState.renderCache`)
+  - A UI-thread shared value that is mutated in place and never
+    reassigned. It holds:
+    - the candle pyramid, synced from `series.revision`;
+    - lazily built pyramids per drawn indicator output, synced from the
+      indicator set revision;
+    - conflation buffers;
+    - `frame` scratch (time / price scale, range, metrics, rect), shared
+      by the mappers, which run sequentially.
+  - `cachedCandleRange` uses the pyramid for ranges of ≥ 2048 bars
+    (`PYRAMID_QUERY_MIN_BARS`) and the linear scan below that.
+- **Pixel-bucket conflation** (`render/conflation/Conflation.ts`,
+  `ValueConflation.ts`, `ConflatedLayers.ts`)
+  - `frameGroupSize` chooses a power-of-two group once slots drop below
+    `viewport.conflationPx` device px (default 2) or below the wick
+    width.
+  - Candles merge into OHLC buckets anchored at bar 0.
+  - Lines draw as a min/max envelope (`buildEnvelopeLine`, ≤ 2 points per
+    bucket). Bands use `upper.max` / `lower.min`. Histograms use the
+    largest-magnitude value.
+  - Wired into the candle, indicator and pane layers. Histogram metrics
+    use the bucket spacing.
+  - Auto-scale and pane scales use `cachedAutoScaleTarget` /
+    `cachedPaneRange` (pyramid-backed). `paneRangeFromValues` and
+    `padPriceRange` were extracted so both paths share the padding
+    logic.
+- **Sparse time ticks** (`axes/SparseTimeTicks.ts`, `TimeTickRules.ts`)
+  - With ≥ 16 bars per label slot, ticks jump between calendar
+    boundaries with a binary search.
+  - The rules shared with the linear scan moved to `TimeTickRules`.
+- **Text audit** (`axes/LabelCache.ts`, `render/skia/axisLabels.ts`,
+  `axesResources.ts`)
+  - A direct-mapped `(value, format key) → text + width` cache per axis
+    kind.
+  - Every tick / label buffer, the last-price marker, offset resolvers
+    and scale scratch are reused across frames.
+  - `layoutTimeAxisLabels` accepts pre-measured widths.
+  - The crosshair overlay reuses its frame, scales and resolvers.
+- **Layer invalidation**
+  - Verified by tests: crosshair moves rebuild no static layer, and pans
+    with an unchanged price range reformat no price label.
+- **FrameStats** (`performance/FrameStats.ts`)
+  - A constant-memory histogram accumulator: avg / p95 / max / dropped
+    frames.
+  - Worklet-safe, so it can record inside a UI frame callback.
+- **Benchmarks**
+  - `benchmarks/perf.bench.ts` (added to `yarn bench`): 100k full
+    zoom-out before/after, pyramid, sparse ticks, label cache.
+  - `benchmarks/skia.bench.ts` (`yarn bench:skia`): CanvasKit comparison
+    of dynamic paths vs cached paths vs Picture replay, and of conflated
+    vs unconflated 100k frames.
+- **Example Benchmark screen**
+  - Scenes §28 A–D, the §36 gate and a 100k all-visible scene.
+  - Each scene runs on a fresh chart with a scripted pan → pinch →
+    crosshair timeline, driven from `useFrameCallback`, plus its realtime
+    feed.
+  - Reports UI / JS frame avg / p95 / max, dropped frames, bars and the
+    Hermes heap.
+
+### Key design decisions
+
+- **Conflation is rendering-only.**
+  - The store, indicators and the crosshair still see every bar.
+  - The group size depends on zoom only, and buckets are anchored at
+    bar 0. Pans therefore never re-bucket, and a `g → 2g` step merges
+    bucket pairs, so highs and lows are continuous across the switch.
+- **Envelope, not decimation**, for lines: every-n-th sampling drops
+  spikes; min/max keeps them.
+- **Histograms use max, not sum.** Summing volume would push bars above
+  the pane scale, which is computed per bar.
+- **No path cache, no candle Picture** (17.2 / 17.3).
+  - CanvasKit shows at most a 20–45 µs gain at normal zoom, and only for
+    pure translate pans.
+  - Auto-scale, edge bars, pinch and ticks all invalidate such a cache.
+  - Conflation already bounds geometry by plot width. Details in
+    `PERFORMANCE.md` §3.
+- **The render cache is a mutable shared value**, not a React ref:
+  - it lives on the UI runtime;
+  - reading it subscribes a mapper to nothing;
+  - in-place mutation keeps allocations out of frames.
+- **Helpers used by worklets are defined before their callers.** Worklet
+  closures capture at definition time, as Jest's worklet transform
+  showed.
+
+### Public API added (main entry)
+
+- Config: `viewport.conflationPx` (default `2`; `0` disables
+  conflation).
+- Performance: `createFrameStats`, `recordFrameInterval`,
+  `summarizeFrameStats`, `resetFrameStats`, `droppedFrames`,
+  `DEFAULT_FRAME_TARGET_MS`, `FrameStatsAccumulator`,
+  `FrameStatsSummary`.
+- Engine state (via `TradingChartHandle.state`): `renderCache`, which is
+  internal but visible on the handle.
+
+### Tests
+
+- New suites, each with a perspective table and Given / When / Then:
+  - MinMaxPyramid (MP01–11), Conflation (CF01–11), ValueConflation
+    (VC/VE), RenderCache (RC01–12), ConflatedLayers (CL01–08);
+  - TimeTickRules (TR01–09), SparseTimeTicks (ST01–09, including a
+    property test sparse == linear over the whole tick ladder for 3
+    zones and a DST switch);
+  - LabelCache (LC01–08), axisLabels (AX01–06), FrameStats (FS01–10);
+  - layerInvalidation (LI01–04).
+- Extended suites: layer hooks (H6–H8 conflation group / off / boundary;
+  L6–L7 conflated indicators; PL7 conflated histograms).
+- **Counts**: 1862 tests in 100 suites (P7: 1725 in 89).
+  - Coverage: 99.91 % statements, 99.54 % branches.
+  - Every new P8 module is at 100 %.
+- **Remaining uncovered branches** are unchanged from P7, plus earlier
+  ones:
+  - `TradingChart.tsx` 75, `SkiaChartCanvas.tsx` 84–86 (prop defaults);
+  - `paneAxes.ts` 102;
+  - `useLegendLayer`, `useFrameProfiler`, `CandleGeometryBatch`,
+    `RenderProfiler` defensive fallbacks.
+
+### Known limitations / follow-ups
+
+- **Device benchmark numbers are not recorded yet.** Run the Benchmark
+  screen in a release build on iOS and Android, then fill in
+  `PERFORMANCE.md` §9.
+- A prepend (history page) rebuilds the candle pyramid in full: about
+  1 ms per 100k bars.
+- Residual per-frame allocations are O(1) small objects: sink closures,
+  the returned frame objects, the pane-scale output array, and one
+  context object in the indicator and pane layers.
+- The label caches do not know about the font. They are recreated with
+  the axes resources when the glyph table or separator changes.
+- `src/index.ts` and some test suites exceed 300 lines. They are export
+  lists and case tables, and splitting them would not help readability.

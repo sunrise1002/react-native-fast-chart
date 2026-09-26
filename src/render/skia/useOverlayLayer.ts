@@ -2,15 +2,22 @@ import { Skia, type SkPicture } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { MS_PER_DAY } from '../../axes/CivilTime';
+import {
+  applyPriceFormatter,
+  applyTimeFormatter,
+  TIME_LABEL_CROSSHAIR,
+  type PriceFormatter,
+  type TimeFormatter,
+} from '../../axes/Formatters';
 import { clampSpan } from '../../axes/LabelCollision';
 import { displayDecimals } from '../../axes/PriceFormat';
 import { measureText } from '../../axes/TextMetrics';
-import { formatDateTime } from '../../axes/TimeFormat';
 import {
   createOffsetResolver,
   offsetAt,
   type ChartTimeZone,
 } from '../../axes/TimeZone';
+import type { DailyBarsTimeZone } from '../../core/ChartConfig';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
 import { paneIndexAt } from '../../panes/PaneLayout';
 import type { PriceScaleSnapshot } from '../../viewport/PriceScale';
@@ -42,6 +49,12 @@ export interface OverlayStyle {
   pricePrecision: number;
   thousandsSeparator: string;
   timeZone: ChartTimeZone;
+  /** Calendar zone of daily+ bars (default `'utc'`). */
+  dailyBarsTimeZone?: DailyBarsTimeZone;
+  /** Decimals of unscaled legend volumes (`NaN` = automatic). */
+  volumeDecimals?: number;
+  priceFormatter?: PriceFormatter;
+  timeFormatter?: TimeFormatter;
   showLegend: boolean;
   showLegendVolume: boolean;
   /** Overlay indicators listed under the OHLC row (with their values). */
@@ -73,7 +86,8 @@ export function useOverlayLayer(
   barMs: SharedValue<number>,
   style: OverlayStyle
 ): { crosshair: SharedValue<SkPicture>; legend: SharedValue<SkPicture> } {
-  const { timeZone } = style;
+  const { timeZone, priceFormatter, timeFormatter } = style;
+  const dailyZone = style.dailyBarsTimeZone === 'chart' ? timeZone : 'utc';
   // Reused per crosshair frame (P8 allocation audit).
   const resources = useMemo(
     () => ({
@@ -89,9 +103,9 @@ export function useOverlayLayer(
         max: NaN,
       },
       zone: createOffsetResolver(timeZone),
-      utc: createOffsetResolver('utc'),
+      daily: createOffsetResolver(dailyZone),
     }),
-    [timeZone]
+    [timeZone, dailyZone]
   );
   const { series, barSpacing, rightOffset, plotWidth, plotHeight } = state;
   const { priceMin, priceMax, priceAxisWidth } = state;
@@ -176,14 +190,17 @@ export function useOverlayLayer(
 
     if (hasScale) {
       canvas.drawLine(0, ch.y, time.width, ch.y, line);
-      // Value label on the pane's axis.
-      const text = formatIndicatorValue(
-        ch.price,
-        valueDecimals,
-        compact,
-        displayDecimals(NaN, ch.price),
-        sep
-      );
+      // Value label on the pane's axis (price pane: symbol formatter).
+      const text =
+        pane > 0
+          ? formatIndicatorValue(
+              ch.price,
+              valueDecimals,
+              compact,
+              displayDecimals(NaN, ch.price),
+              sep
+            )
+          : applyPriceFormatter(priceFormatter, ch.price, valueDecimals, sep);
       const top = clampSpan(
         ch.y,
         boxHeight,
@@ -214,8 +231,14 @@ export function useOverlayLayer(
 
     // Time label on the time axis.
     const ms = barMs.value;
-    const resolver = ms >= MS_PER_DAY ? resources.utc : resources.zone;
-    const timeText = formatDateTime(ch.time + offsetAt(resolver, ch.time), ms);
+    const resolver = ms >= MS_PER_DAY ? resources.daily : resources.zone;
+    const timeText = applyTimeFormatter(
+      timeFormatter,
+      ch.time + offsetAt(resolver, ch.time),
+      TIME_LABEL_CROSSHAIR,
+      ms,
+      false
+    );
     const width = measureText(glyphs, timeText) + 2 * AXIS_LABEL_PADDING;
     const left = clampSpan(ch.x, width, 0, time.width);
     const labelTop = stack + (timeAxisHeight - boxHeight) / 2;
@@ -241,6 +264,8 @@ export function useOverlayLayer(
     font,
     paints,
     pricePrecision,
+    volumeDecimals: style.volumeDecimals,
+    priceFormatter,
     thousandsSeparator: sep,
     showLegend: style.showLegend,
     showLegendVolume: style.showLegendVolume,

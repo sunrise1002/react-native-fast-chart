@@ -4,7 +4,6 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { requiredAxisWidth } from '../../axes/AxisWidth';
 import { displayDecimals } from '../../axes/PriceFormat';
 import { generatePriceTicks } from '../../axes/PriceTicks';
-import type { ChartTimeZone } from '../../axes/TimeZone';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
 import { layoutPriceAxisLabels } from '../axes/PriceAxisRenderer';
 import { layoutTimeAxisLabels } from '../axes/TimeAxisRenderer';
@@ -12,13 +11,18 @@ import { buildGridGeometry } from '../grid/GridGeometry';
 import { computeLastPriceMarker } from '../overlays/LastPriceRenderer';
 import { centeredBaseline } from '../RenderModel';
 import { createAxesResources } from './axesResources';
+import {
+  AXIS_LABEL_PADDING,
+  BADGE_PADDING_Y,
+  BADGE_RADIUS,
+  type AxesFrame,
+  type AxesStyle,
+} from './axesStyle';
 import { cachedPriceLabel, cachedTimeLabels } from './axisLabels';
 import { framePriceScale, frameTimeScale } from './frameScales';
 import { recordPaneAxes } from './paneAxes';
 import type { PaneDrawItem } from './PanePaints';
 import { computeTimeTicks, timeLabelSpacing } from './timeAxis';
-import type { ChartFont, ChartPaints } from './SkiaResources';
-import type { PaneScaleFrame } from './usePaneScales';
 
 const NO_PANES: readonly PaneDrawItem[] = [];
 const NO_TIME_TICKS = { positions: [] as number[], count: 0 };
@@ -26,38 +30,13 @@ const NO_PRICE_TICKS = { values: [] as number[], count: 0 };
 
 export { TIME_LABEL_GAP_EM, timeLabelSpacing } from './timeAxis';
 
-/** Horizontal padding of price labels / badges inside the axis, dp. */
-export const AXIS_LABEL_PADDING = 6;
-/** Vertical padding of axis badges, dp. */
-export const BADGE_PADDING_Y = 3;
-/** Corner radius of axis badges, dp. */
-export const BADGE_RADIUS = 2;
-
-export interface AxesStyle {
-  font: ChartFont;
-  paints: ChartPaints;
-  gridLineWidth: number;
-  pixelRatio: number;
-  timeAxisHeight: number;
-  /** Fixed decimals, or `NaN` for automatic. */
-  pricePrecision: number;
-  thousandsSeparator: string;
-  timeZone: ChartTimeZone;
-  showLastPrice: boolean;
-  /** Indicator panes (own grid rows and axis labels). */
-  panes?: readonly PaneDrawItem[];
-  paneScales?: SharedValue<PaneScaleFrame>;
-}
-
-/** One frame of the axes layer. */
-export interface AxesFrame {
-  /** Grid lines from the axis ticks (spec §19.3). */
-  grid: SkPath;
-  /** Price / time labels, last-price line and badge. */
-  picture: SkPicture;
-  /** Axis width that fits this frame's widest label, dp. */
-  requiredAxisWidth: number;
-}
+export {
+  AXIS_LABEL_PADDING,
+  BADGE_PADDING_Y,
+  BADGE_RADIUS,
+  type AxesFrame,
+  type AxesStyle,
+} from './axesStyle';
 
 /**
  * Builds the grid path and the axes picture on the UI thread in one pass
@@ -79,11 +58,24 @@ export function useAxesLayer(
   const { priceMin, priceMax, priceAxisWidth, stackHeight } = state;
   const { font, paints, gridLineWidth, pixelRatio, timeAxisHeight } = style;
   const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
+  const { priceFormatter, timeFormatter } = style;
+  const tickSize = style.tickSize ?? NaN;
+  const dailyZone = style.dailyBarsTimeZone === 'chart' ? timeZone : 'utc';
   const resources = useMemo(
-    () => createAxesResources(timeZone, gridLineWidth, pixelRatio),
-    // The label caches are only valid for one glyph table / separator.
+    () => createAxesResources(timeZone, dailyZone, gridLineWidth, pixelRatio),
+    // The label caches are only valid for one glyph table / separator /
+    // formatter pair.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [timeZone, font.glyphs, sep, gridLineWidth, pixelRatio]
+    [
+      timeZone,
+      dailyZone,
+      font.glyphs,
+      sep,
+      gridLineWidth,
+      pixelRatio,
+      priceFormatter,
+      timeFormatter,
+    ]
   );
 
   const { showLastPrice, paneScales } = style;
@@ -123,7 +115,8 @@ export function useAxesLayer(
       price.height,
       size,
       priceTicks,
-      pricePrecision
+      pricePrecision,
+      tickSize
     );
     marker.visible = false;
     const badgeHeight = lineHeight + 2 * BADGE_PADDING_Y;
@@ -131,7 +124,7 @@ export function useAxesLayer(
       computeLastPriceMarker(data, price, badgeHeight, marker);
     }
 
-    // Time ticks (daily+ bars are calendar days: UTC dates).
+    // Time ticks (daily+ bars are calendar days in `dailyBarsTimeZone`).
     const withSeconds = computeTimeTicks(
       data,
       time,
@@ -189,7 +182,8 @@ export function useAxesLayer(
         glyphs,
         priceTicks.values[i] as number,
         priceTicks.decimals,
-        sep
+        sep,
+        priceFormatter
       );
       widest = Math.max(widest, caches.price.lastWidth);
     }
@@ -211,7 +205,8 @@ export function useAxesLayer(
         glyphs,
         marker.price,
         displayDecimals(pricePrecision, marker.price),
-        sep
+        sep,
+        priceFormatter
       );
       widest = Math.max(widest, caches.price.lastWidth);
     }
@@ -230,7 +225,9 @@ export function useAxesLayer(
       glyphs,
       timeTicks,
       withSeconds,
-      resources.timeLabels
+      resources.timeLabels,
+      timeFormatter,
+      barMs.value
     );
     layoutTimeAxisLabels(
       timeTicks,

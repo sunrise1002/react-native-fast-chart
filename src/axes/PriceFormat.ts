@@ -156,15 +156,18 @@ const VOLUME_UNITS = ['', 'K', 'M', 'B', 'T'];
 
 /**
  * Compact volume: `950` → `"950"`, `1234` → `"1.23K"`, `12_345_678` →
- * `"12.35M"`. Values below 1 keep up to 4 significant decimals. Negative /
- * non-finite volumes format as `''`.
+ * `"12.35M"`. Unscaled values (< 1000) use `precision` decimals when it is
+ * `>= 0` (symbol `volumePrecision` / `quantityStep`), otherwise integers
+ * print as-is, fractions with 2 decimals and values below 1 with up to 4
+ * significant decimals. Negative / non-finite volumes format as `''`.
  */
-export function formatVolume(value: number): string {
+export function formatVolume(value: number, precision = NaN): string {
   'worklet';
   if (!(value >= 0 && value < Infinity)) {
     return '';
   }
-  if (value < 1) {
+  const fixed = precision >= 0;
+  if (value < 1 && !fixed) {
     return value === 0 ? '0' : formatPrice(value, autoPriceDecimals(value));
   }
   let scaled = value;
@@ -173,6 +176,13 @@ export function formatVolume(value: number): string {
     scaled /= 1000;
     unit++;
   }
-  const decimals = unit === 0 && scaled === Math.floor(scaled) ? 0 : 2;
+  const decimals =
+    unit > 0
+      ? 2
+      : fixed
+        ? sanitizeDecimals(precision)
+        : scaled === Math.floor(scaled)
+          ? 0
+          : 2;
   return formatPrice(scaled, decimals) + VOLUME_UNITS[unit];
 }

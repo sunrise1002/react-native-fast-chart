@@ -5,6 +5,7 @@ import {
 } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import type { PriceFormatter } from '../../axes/Formatters';
 import { displayDecimals } from '../../axes/PriceFormat';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
 import {
@@ -31,6 +32,9 @@ export interface LegendStyle {
   font: ChartFont;
   paints: ChartPaints;
   pricePrecision: number;
+  /** Decimals of unscaled legend volumes (`NaN` = automatic). */
+  volumeDecimals?: number;
+  priceFormatter?: PriceFormatter;
   thousandsSeparator: string;
   showLegend: boolean;
   showLegendVolume: boolean;
@@ -90,6 +94,8 @@ export function useLegendLayer(
   const { crosshairIndex, crosshairOpacity } = state;
   const { font, paints, pricePrecision, thousandsSeparator: sep } = style;
   const { showLegend, showLegendVolume, indicators: overlays } = style;
+  const { priceFormatter } = style;
+  const volumeDecimals = style.volumeDecimals ?? NaN;
   const panes = style.panes ?? EMPTY_PANES;
   const { glyphs, metrics, lineHeight } = font;
 
@@ -137,6 +143,8 @@ export function useLegendLayer(
         decimals,
         thousandsSeparator: sep,
         showVolume: showLegendVolume,
+        volumeDecimals,
+        priceFormatter,
       },
       {
         text(text, x, baseline, textStyle) {

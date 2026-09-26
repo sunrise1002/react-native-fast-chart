@@ -1,11 +1,14 @@
 import { sanitizeDecimals, stepDecimals } from './PriceFormat';
+import { snapStepToTickSize } from './SymbolPrecision';
 
 /**
  * Price tick generator (spec §19.2, Phase 5.1). Steps are "nice" numbers
  * `1 / 2 / 2.5 / 5 × 10^n`; the target tick count follows the pane height
  * and the label font size, so ticks never crowd the axis. Label decimals
  * derive from the step or from a configured `pricePrecision` (which also
- * floors the step at one price unit, `10^-precision`).
+ * floors the step at one price unit, `10^-precision`). A symbol
+ * `tickSize` floors the step too and rounds it up to a tick multiple, so
+ * every tick is a tradable price.
  *
  * Pure, worklet-compatible, allocation-free (writes into `PriceTicks`).
  */
@@ -96,23 +99,28 @@ export function priceTickTargetCount(
 
 /**
  * Step for `[min, max]` over `heightPx` with labels of `fontSize`;
- * `pricePrecision` (`< 0` / `NaN` = automatic) floors it at `10^-p`.
+ * `pricePrecision` (`< 0` / `NaN` = automatic) floors it at `10^-p`;
+ * a valid `tickSize` floors it at one tick and makes it a tick multiple.
  */
 export function priceTickStep(
   min: number,
   max: number,
   heightPx: number,
   fontSize: number,
-  pricePrecision = NaN
+  pricePrecision = NaN,
+  tickSize = NaN
 ): number {
   'worklet';
   const target = priceTickTargetCount(heightPx, fontSize);
   if (target < 1) {
     return NaN;
   }
-  const minStep =
+  const unit =
     pricePrecision >= 0 ? Math.pow(10, -sanitizeDecimals(pricePrecision)) : 0;
-  return nicePriceTickStep(max - min, target, minStep);
+  const hasTick = tickSize > 0 && tickSize < Infinity;
+  const minStep = hasTick && tickSize > unit ? tickSize : unit;
+  const step = nicePriceTickStep(max - min, target, minStep);
+  return hasTick ? snapStepToTickSize(step, tickSize) : step;
 }
 
 /**
@@ -126,7 +134,8 @@ export function generatePriceTicks(
   heightPx: number,
   fontSize: number,
   out: PriceTicks,
-  pricePrecision = NaN
+  pricePrecision = NaN,
+  tickSize = NaN
 ): number {
   'worklet';
   out.count = 0;
@@ -135,7 +144,14 @@ export function generatePriceTicks(
   if (!(Number.isFinite(min) && Number.isFinite(max) && max > min)) {
     return 0;
   }
-  const step = priceTickStep(min, max, heightPx, fontSize, pricePrecision);
+  const step = priceTickStep(
+    min,
+    max,
+    heightPx,
+    fontSize,
+    pricePrecision,
+    tickSize
+  );
   if (!(step > 0 && step < Infinity)) {
     return 0;
   }

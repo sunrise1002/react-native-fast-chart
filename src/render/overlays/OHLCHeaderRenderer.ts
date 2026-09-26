@@ -1,7 +1,10 @@
 import type { CandleColumns } from '../../data/CandleBuffer';
 import {
+  applyPriceFormatter,
+  type PriceFormatter,
+} from '../../axes/Formatters';
+import {
   formatPercent,
-  formatPrice,
   formatSignedPrice,
   formatVolume,
 } from '../../axes/PriceFormat';
@@ -37,6 +40,10 @@ export interface OhlcHeaderLayout {
   thousandsSeparator: string;
   /** Show the `V` (volume) group. */
   showVolume: boolean;
+  /** Decimals of unscaled volumes (`NaN` / omitted = automatic). */
+  volumeDecimals?: number;
+  /** Custom O / H / L / C formatter (worklet; see `PriceFormatter`). */
+  priceFormatter?: PriceFormatter;
 }
 
 interface Cursor {
@@ -90,12 +97,19 @@ export function layoutOhlcHeader(
   const open = series.open[at] as number;
   const close = series.close[at] as number;
   const style = close < open ? OHLC_STYLE_DOWN : OHLC_STYLE_UP;
-  const { decimals, thousandsSeparator: sep } = layout;
+  const { decimals, thousandsSeparator: sep, priceFormatter: fmt } = layout;
   const cursor: Cursor = { x: layout.x, line: 0 };
-  emitGroup('O', formatPrice(open, decimals, sep), style, layout, cursor, sink);
+  emitGroup(
+    'O',
+    applyPriceFormatter(fmt, open, decimals, sep),
+    style,
+    layout,
+    cursor,
+    sink
+  );
   emitGroup(
     'H',
-    formatPrice(series.high[at] as number, decimals, sep),
+    applyPriceFormatter(fmt, series.high[at] as number, decimals, sep),
     style,
     layout,
     cursor,
@@ -103,7 +117,7 @@ export function layoutOhlcHeader(
   );
   emitGroup(
     'L',
-    formatPrice(series.low[at] as number, decimals, sep),
+    applyPriceFormatter(fmt, series.low[at] as number, decimals, sep),
     style,
     layout,
     cursor,
@@ -111,7 +125,7 @@ export function layoutOhlcHeader(
   );
   emitGroup(
     'C',
-    formatPrice(close, decimals, sep),
+    applyPriceFormatter(fmt, close, decimals, sep),
     style,
     layout,
     cursor,
@@ -132,7 +146,7 @@ export function layoutOhlcHeader(
   if (layout.showVolume) {
     emitGroup(
       'V',
-      formatVolume(series.volume[at] as number),
+      formatVolume(series.volume[at] as number, layout.volumeDecimals),
       style,
       layout,
       cursor,

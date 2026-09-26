@@ -4,9 +4,13 @@ import {
   storeLabel,
   type LabelCache,
 } from '../../axes/LabelCache';
-import { formatPrice } from '../../axes/PriceFormat';
+import {
+  applyPriceFormatter,
+  applyTimeFormatter,
+  type PriceFormatter,
+  type TimeFormatter,
+} from '../../axes/Formatters';
 import { measureText, type GlyphWidthTable } from '../../axes/TextMetrics';
-import { formatTimeTick } from '../../axes/TimeFormat';
 import type { TimeTicks } from '../../axes/TimeTicks';
 import { formatIndicatorValue } from '../overlays/IndicatorLegendRenderer';
 
@@ -31,20 +35,24 @@ export function createAxisLabelCaches(): AxisLabelCaches {
   };
 }
 
-/** Price label with `decimals` decimals. Worklet. */
+/**
+ * Price label with `decimals` decimals (or from `formatter`; the cache
+ * must be recreated when the formatter changes). Worklet.
+ */
 export function cachedPriceLabel(
   cache: LabelCache,
   glyphs: GlyphWidthTable,
   value: number,
   decimals: number,
-  separator: string
+  separator: string,
+  formatter?: PriceFormatter
 ): string {
   'worklet';
   const hit = lookupLabel(cache, value, decimals);
   if (hit !== null) {
     return hit;
   }
-  const text = formatPrice(value, decimals, separator);
+  const text = applyPriceFormatter(formatter, value, decimals, separator);
   return storeLabel(cache, value, decimals, text, measureText(glyphs, text));
 }
 
@@ -87,13 +95,18 @@ export function createLabelBuffer(capacity: number): LabelBuffer {
   };
 }
 
-/** Fills `out[0 … ticks.count)` with the labels of `ticks`. Worklet. */
+/**
+ * Fills `out[0 … ticks.count)` with the labels of `ticks` (`formatter`
+ * receives `barMs`; the cache must be recreated when it changes). Worklet.
+ */
 export function cachedTimeLabels(
   cache: LabelCache,
   glyphs: GlyphWidthTable,
   ticks: TimeTicks,
   withSeconds: boolean,
-  out: LabelBuffer
+  out: LabelBuffer,
+  formatter?: TimeFormatter,
+  barMs = NaN
 ): LabelBuffer {
   'worklet';
   for (let i = 0; i < ticks.count; i++) {
@@ -104,7 +117,13 @@ export function cachedTimeLabels(
     if (hit !== null) {
       out.texts[i] = hit;
     } else {
-      const text = formatTimeTick(local, weight, withSeconds);
+      const text = applyTimeFormatter(
+        formatter,
+        local,
+        weight,
+        barMs,
+        withSeconds
+      );
       out.texts[i] = storeLabel(
         cache,
         local,

@@ -12,6 +12,8 @@ import {
   deserializeChartSettings,
   serializeChartSettings,
   useTradingChartController,
+  type ChartErrorEvent,
+  type ChartPerformanceSample,
   type ChartTheme,
   type LoadMoreHandler,
   type TradingChartHandle,
@@ -21,10 +23,13 @@ import { JumpToLatestButton } from '../components/JumpToLatestButton';
 import { MarketToolbar } from '../components/MarketToolbar';
 import { Toggle } from '../components/Toggle';
 import { binanceMarket } from '../market/BinanceMarket';
+import {
+  SYMBOL_META,
+  ZONE_OPTIONS,
+  groupedPrice,
+} from '../market/chartOptions';
 import { mockMarket } from '../market/MockMarket';
 import type { MarketSymbol, MarketTimeframe } from '../market/types';
-
-const CONFIG = { realtime: { lastPricePulse: true } } as const;
 
 interface MarketScreenProps {
   theme: ChartTheme;
@@ -33,16 +38,37 @@ interface MarketScreenProps {
 /**
  * Realtime demo (P7): data flows through the controller only — history
  * via `setData` / `onLoadMore`, ticks via `upsertBar` — so React renders
- * on symbol / timeframe / status changes, never per tick.
+ * on symbol / timeframe / status changes, never per tick. P9: exchange
+ * precision per symbol, a time-zone switch and error / perf telemetry.
  */
 export function MarketScreen({ theme }: MarketScreenProps) {
-  const controller = useTradingChartController(CONFIG);
   const [symbol, setSymbol] = useState<MarketSymbol>('BTCUSDT');
+  const [zoneIndex, setZoneIndex] = useState(0);
+  const zone = ZONE_OPTIONS[zoneIndex % ZONE_OPTIONS.length]!;
+  const config = useMemo(
+    () => ({
+      realtime: { lastPricePulse: true },
+      symbol: SYMBOL_META[symbol],
+      axes: { timeZone: zone.zone },
+    }),
+    [symbol, zone]
+  );
+  const controller = useTradingChartController(config);
   const [timeframe, setTimeframe] = useState<MarketTimeframe>('1m');
   const [binance, setBinance] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [perf, setPerf] = useState('');
+  const onError = useCallback((event: ChartErrorEvent) => {
+    // Forward to your crash reporter here (Sentry, Crashlytics, …).
+    setNote(`[${event.source}] ${event.error.message}`);
+  }, []);
+  const onPerformanceSample = useCallback((s: ChartPerformanceSample) => {
+    setPerf(
+      `${s.fps.toFixed(0)} fps · build ${s.build.avgMs.toFixed(2)} ms · ${s.bars} bars`
+    );
+  }, []);
   const market = binance ? binanceMarket : mockMarket;
   const status = useSyncExternalStore(
     useCallback(
@@ -104,6 +130,14 @@ export function MarketScreen({ theme }: MarketScreenProps) {
   };
 
   const color = theme.axis.textColor;
+  const errorFallback = useCallback(
+    (error: Error, retry: () => void) => (
+      <Text style={[styles.note, { color }]} onPress={retry}>
+        Chart error: {error.message} — tap to retry
+      </Text>
+    ),
+    [color]
+  );
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.surface }]}>
       <View style={styles.header}>
@@ -116,6 +150,11 @@ export function MarketScreen({ theme }: MarketScreenProps) {
           />
           <Toggle label="Save" theme={theme} onPress={save} />
           <Toggle label="Restore" theme={theme} onPress={restore} />
+          <Toggle
+            label={zone.label}
+            theme={theme}
+            onPress={() => setZoneIndex((i) => i + 1)}
+          />
           <Toggle
             label={binance ? 'Binance' : 'Mock'}
             active={binance}
@@ -136,11 +175,16 @@ export function MarketScreen({ theme }: MarketScreenProps) {
         {note || `${market.name} feed — scroll left to load history`}
       </Text>
       <ComputeStats controller={controller} color={color} />
+      {perf ? <Text style={[styles.note, { color }]}>{perf}</Text> : null}
       <View style={styles.chart}>
         <TradingChart
           controller={controller}
           theme={theme}
-          config={CONFIG}
+          config={config}
+          priceFormatter={groupedPrice}
+          onError={onError}
+          onPerformanceSample={onPerformanceSample}
+          errorFallback={errorFallback}
           onLoadMore={onLoadMore}
           historyLoadingIndicator={<ActivityIndicator color={color} />}
         />

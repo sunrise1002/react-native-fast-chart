@@ -12,6 +12,7 @@ import type { IndicatorEngine } from '../indicators/IndicatorEngine';
 import type { PaneManager } from '../panes/PaneManager';
 import type { ChartMetrics } from '../performance/ChartMetrics';
 import type { RealtimeStatusStore } from '../realtime/RealtimeStatus';
+import type { ChartErrorChannel } from './ChartErrorChannel';
 import type { ChartSharedState, ViewportOptions } from './ChartSharedState';
 
 /**
@@ -46,6 +47,8 @@ export interface ChartControllerInternals extends TradingChartHandle {
   readonly options: ViewportOptions;
   /** Viewport policy of the pending / last dataset reset. */
   readonly resetPolicy: ViewportResetPolicy;
+  /** Non-fatal error fan-out (`subscribeErrors`). */
+  readonly errors: ChartErrorChannel;
   configure(config: ChartConfig): void;
   /** `candles` prop path: diffs against the previous prop and applies. */
   syncCandles(candles: readonly Candle[]): AppliedCandleDiff;

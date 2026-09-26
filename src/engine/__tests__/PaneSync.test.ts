@@ -19,7 +19,7 @@ import { PaneManager } from '../../panes/PaneManager';
 import {
   asInternals,
   createTradingChartController,
-} from '../ChartControllerImpl';
+} from '../createTradingChartController';
 import { resizeCanvas } from '../LayoutActions';
 import { connectPanesToUi, toPaneLayoutSpec } from '../PaneSync';
 import { makeEngine } from './engineTestUtils';

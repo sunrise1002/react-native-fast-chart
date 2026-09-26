@@ -23,7 +23,7 @@
  * | TC14 | indicators prop (EMA + BB)                  | Equivalence      | engine set, UI mirrored, overlay drawn    |
  * | TC15 | indicators prop new array, same value        | Boundary         | setIndicators not called again            |
  * | TC16 | indicators prop changed / emptied            | Equivalence      | set replaced / cleared                    |
- * | TC17 | indicators prop with unknown type            | Invalid          | throws (surfaced to the error boundary)   |
+ * | TC17 | indicators prop with unknown type            | Invalid          | fallback shown, onError(render, fatal)    |
  * | TC18 | RSI + MACD panes, volume overlay             | Equivalence      | panes laid out, pane + underlay drawn     |
  * | TC19 | indicators removed                           | Boundary (empty) | automatic panes removed, price full height|
  * | TC20 | explicit pane via controller + removePane    | Equivalence      | layout split / restored                   |
@@ -36,7 +36,7 @@ import {
   asInternals,
   createTradingChartController,
   type TradingChartHandle,
-} from '../../engine/ChartControllerImpl';
+} from '../../engine/createTradingChartController';
 import { defaultDarkTheme } from '../../theme/defaultDarkTheme';
 import { defaultLightTheme } from '../../theme/defaultLightTheme';
 import { TradingChart } from '../TradingChart';
@@ -318,13 +318,26 @@ describe('TradingChart', () => {
     expect(spy).toHaveBeenCalledTimes(3);
   });
 
-  it('TC17: unknown indicator types throw', async () => {
+  it('TC17: unknown indicator types show the fallback and report', async () => {
     // Given
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
-    // When / Then
-    await expect(async () => {
-      await render(<TradingChart indicators={[{ type: 'nope' }]} />);
-    }).rejects.toThrow('Unknown indicator type "nope"');
+    const onError = jest.fn();
+    // When
+    const root = await render(
+      <TradingChart indicators={[{ type: 'nope' }]} onError={onError} />
+    );
+    // Then
+    expect(root.getByTestId('fast-chart-error-fallback')).toBeTruthy();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const event = onError.mock.calls[0]?.[0] as {
+      source: string;
+      fatal: boolean;
+      error: Error;
+    };
+    expect(event.source).toBe('render');
+    expect(event.fatal).toBe(true);
+    expect(event.error).toBeInstanceOf(Error);
+    expect(event.error.message).toBe('Unknown indicator type "nope"');
     error.mockRestore();
   });
 

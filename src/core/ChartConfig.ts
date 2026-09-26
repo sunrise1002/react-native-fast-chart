@@ -1,5 +1,7 @@
+import type { ChartSymbolConfig } from '../axes/SymbolPrecision';
 import type { ChartTimeZone } from '../axes/TimeZone';
 import { deepMerge, type DeepPartial } from '../utils/deepMerge';
+import { sanitizeChartConfig } from './ConfigSanitize';
 
 /** Developer diagnostics. All flags default to `false` (zero cost). */
 export interface ChartDebugConfig {
@@ -62,21 +64,43 @@ export interface ChartInteractionConfig {
   paneResizeEnabled: boolean;
 }
 
+/** Where daily and longer bars take their calendar date from. */
+export type DailyBarsTimeZone = 'utc' | 'chart';
+
 /** Axis labels and number / time formatting (spec §19, Phase 19.1–19.3). */
 export interface ChartAxesConfig {
   /**
-   * Fixed price decimals (asset precision, e.g. 2 for BTCUSDT, 8 for a
-   * micro-cap). `null` derives them from the tick step / price magnitude.
+   * @deprecated Use `symbol.pricePrecision` (takes precedence). Kept as a
+   * fallback until 1.0.
    */
   pricePrecision: number | null;
   /** Thousands separator of price labels (`''` disables grouping). */
   thousandsSeparator: string;
   /**
-   * Zone of intraday time labels: `'local'` (device, DST-aware), `'utc'`
-   * or a fixed UTC offset in minutes. Daily and longer bars always use
-   * their UTC calendar date. The full policy lands in P9.
+   * Zone of intraday time labels and the crosshair time: `'local'`
+   * (device, DST-aware), `'utc'`, a fixed UTC offset in minutes (`540` =
+   * UTC+9) or an IANA name (`'America/New_York'`, via `Intl`; falls back
+   * to UTC when the runtime can't resolve it).
    */
   timeZone: ChartTimeZone;
+  /**
+   * Calendar date of daily / weekly / monthly bars. `'utc'` (default)
+   * reads the bar's UTC date — right for exchanges stamping daily bars at
+   * 00:00 UTC (crypto) and for zones west of UTC. `'chart'` reads it in
+   * `timeZone` — use it when bars open at the exchange's local midnight
+   * east of UTC (e.g. KRX / TSE daily bars at 00:00 UTC+9), together with
+   * the same `timeZone` on `RealtimeBarAggregator`.
+   */
+  dailyBarsTimeZone: DailyBarsTimeZone;
+}
+
+/** Production telemetry (spec §32). */
+export interface ChartTelemetryConfig {
+  /**
+   * Interval of `onPerformanceSample` reports, ms. Frame timing is only
+   * collected while the prop is set. Clamped to `>= 1000`.
+   */
+  performanceSampleMs: number;
 }
 
 /** Crosshair release behavior. */
@@ -130,6 +154,8 @@ export interface ChartHistoryConfig {
 
 /** Static chart options. Changing them is not a per-frame operation. */
 export interface ChartConfig {
+  /** Symbol metadata: precision and tick size (spec Phase 19.1–19.2). */
+  symbol: ChartSymbolConfig;
   layout: ChartLayoutConfig;
   viewport: ChartViewportConfig;
   interaction: ChartInteractionConfig;
@@ -138,10 +164,17 @@ export interface ChartConfig {
   overlays: ChartOverlaysConfig;
   realtime: ChartRealtimeConfig;
   history: ChartHistoryConfig;
+  telemetry: ChartTelemetryConfig;
   debug: ChartDebugConfig;
 }
 
 export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
+  symbol: Object.freeze({
+    pricePrecision: null,
+    tickSize: null,
+    quantityStep: null,
+    volumePrecision: null,
+  }),
   layout: Object.freeze({
     priceAxisWidth: 64,
     timeAxisHeight: 24,
@@ -170,6 +203,7 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     pricePrecision: null,
     thousandsSeparator: ',',
     timeZone: 'local' as ChartTimeZone,
+    dailyBarsTimeZone: 'utc' as DailyBarsTimeZone,
   }),
   crosshair: Object.freeze({
     mode: 'hold' as CrosshairMode,
@@ -190,15 +224,25 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     loadMoreThresholdBars: 50,
     retryDelayMs: 2000,
   }),
+  telemetry: Object.freeze({
+    performanceSampleMs: 5000,
+  }),
   debug: Object.freeze({
     overlay: false,
     profiling: false,
   }),
 });
 
-/** Resolves a user-supplied partial config against the defaults. */
+/**
+ * Resolves a user-supplied partial config against the defaults. Invalid
+ * values (wrong type, `NaN` / ±∞, negative sizes, unknown enum values)
+ * fall back to their defaults instead of reaching the engine.
+ */
 export function resolveChartConfig(
   override?: DeepPartial<ChartConfig> | null
 ): ChartConfig {
-  return deepMerge<ChartConfig>(DEFAULT_CHART_CONFIG, override);
+  return sanitizeChartConfig(
+    deepMerge<ChartConfig>(DEFAULT_CHART_CONFIG, override),
+    DEFAULT_CHART_CONFIG
+  );
 }

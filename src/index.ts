@@ -9,7 +9,7 @@ export {
   createTradingChartController,
   useTradingChartController,
   type TradingChartHandle,
-} from './engine/ChartControllerImpl';
+} from './engine/createTradingChartController';
 export type {
   ChartSharedState,
   ViewportOptions,

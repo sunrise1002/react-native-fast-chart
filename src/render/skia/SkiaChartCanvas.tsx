@@ -7,9 +7,14 @@ import {
   Rect,
   Skia,
 } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import { useDerivedValue } from 'react-native-reanimated';
+import type { PriceFormatter, TimeFormatter } from '../../axes/Formatters';
+import {
+  resolveSymbolPrecision,
+  type ChartSymbolConfig,
+} from '../../axes/SymbolPrecision';
 import { estimateBarInterval } from '../../axes/TimeTicks';
 import type {
   ChartAxesConfig,
@@ -21,6 +26,10 @@ import type {
   ViewportOptions,
 } from '../../engine/ChartSharedState';
 import type { ChartMetrics } from '../../performance/ChartMetrics';
+import {
+  createPerformanceSampler,
+  type ChartPerformanceSampleHandler,
+} from '../../performance/PerformanceSampler';
 import type { ChartTheme } from '../../theme/ChartTheme';
 import type { OverlayRenderSpec } from '../indicators/OverlayRenderSpec';
 import type { PaneRenderSpec } from '../panes/PaneRenderSpec';
@@ -45,6 +54,11 @@ export interface SkiaChartCanvasProps {
   theme: ChartTheme;
   layout: ChartLayoutConfig;
   axes: ChartAxesConfig;
+  /** Symbol precision / tick size (default: automatic). */
+  symbol?: ChartSymbolConfig;
+  /** Custom label formatters (worklets; keep the references stable). */
+  priceFormatter?: PriceFormatter;
+  timeFormatter?: TimeFormatter;
   overlays: ChartOverlaysConfig;
   bodyRatio: number;
   pixelRatio: number;
@@ -57,6 +71,9 @@ export interface SkiaChartCanvasProps {
   getMetrics: () => ChartMetrics;
   /** Draws the realtime last-price pulse (`realtime.lastPricePulse`). */
   lastPricePulse?: boolean;
+  /** Telemetry: one report per `performanceSampleMs` (JS thread). */
+  onPerformanceSample?: ChartPerformanceSampleHandler;
+  performanceSampleMs?: number;
 }
 
 /**
@@ -76,6 +93,9 @@ export function SkiaChartCanvas({
   theme,
   layout,
   axes,
+  symbol,
+  priceFormatter,
+  timeFormatter,
   overlays,
   bodyRatio,
   pixelRatio,
@@ -84,12 +104,18 @@ export function SkiaChartCanvas({
   paneSpecs = NO_PANE_SPECS,
   getMetrics,
   lastPricePulse = false,
+  onPerformanceSample,
+  performanceSampleMs = 5000,
 }: SkiaChartCanvasProps) {
   const font = useChartFont(theme);
   const paints = useChartPaints(theme);
   const { series, plotWidth, plotHeight, crosshairOpacity } = state;
   const { stackHeight, paneLayout, canvasWidth } = state;
-  const pricePrecision = axes.pricePrecision ?? NaN;
+  const precision = useMemo(
+    () => resolveSymbolPrecision(symbol, axes.pricePrecision),
+    [symbol, axes.pricePrecision]
+  );
+  const pricePrecision = precision.priceDecimals;
   const { timeAxisHeight } = layout;
 
   const barMs = useDerivedValue(() => estimateBarInterval(series.value));
@@ -131,8 +157,12 @@ export function SkiaChartCanvas({
     pixelRatio,
     timeAxisHeight,
     pricePrecision,
+    tickSize: precision.tickSize,
     thousandsSeparator: axes.thousandsSeparator,
     timeZone: axes.timeZone,
+    dailyBarsTimeZone: axes.dailyBarsTimeZone,
+    priceFormatter,
+    timeFormatter,
     showLastPrice: overlays.lastPrice,
     panes: paneItems,
     paneScales,
@@ -143,8 +173,12 @@ export function SkiaChartCanvas({
     pixelRatio,
     timeAxisHeight,
     pricePrecision,
+    volumeDecimals: precision.volumeDecimals,
     thousandsSeparator: axes.thousandsSeparator,
     timeZone: axes.timeZone,
+    dailyBarsTimeZone: axes.dailyBarsTimeZone,
+    priceFormatter,
+    timeFormatter,
     showLegend: overlays.legend,
     showLegendVolume: overlays.legendVolume,
     indicators: drawList,
@@ -161,7 +195,26 @@ export function SkiaChartCanvas({
     layout.priceAxisWidth,
     timeAxisHeight
   );
-  useFrameProfiler(profiling, candles.frame, getMetrics, indicatorLayer.frame);
+  const sampler = useMemo(
+    () => createPerformanceSampler(performanceSampleMs),
+    [performanceSampleMs]
+  );
+  const reportSamples = useCallback(
+    (samples: readonly number[]) => {
+      const sample = sampler.push(samples, series.value.length);
+      if (sample !== null) {
+        onPerformanceSample?.(sample);
+      }
+    },
+    [sampler, series, onPerformanceSample]
+  );
+  useFrameProfiler(
+    profiling,
+    candles.frame,
+    getMetrics,
+    indicatorLayer.frame,
+    onPerformanceSample ? reportSamples : undefined
+  );
 
   const clip = useDerivedValue(() => ({
     x: 0,

@@ -37,7 +37,7 @@ import { generateCandles } from '../../testing/fixtures/generateCandles';
 import {
   asInternals,
   createTradingChartController,
-} from '../ChartControllerImpl';
+} from '../createTradingChartController';
 
 beforeEach(() => {
   jest.useFakeTimers();

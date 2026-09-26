@@ -30,7 +30,7 @@ import {
   asInternals,
   createTradingChartController,
   useTradingChartController,
-} from '../ChartControllerImpl';
+} from '../createTradingChartController';
 
 beforeEach(() => {
   jest.useFakeTimers();

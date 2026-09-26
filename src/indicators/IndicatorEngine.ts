@@ -43,6 +43,12 @@ export interface IndicatorEngineOptions {
   getProfiler?: () => RenderProfiler;
   /** Computation backend (default: synchronous, JS thread). */
   backend?: IndicatorBackend;
+  /**
+   * Receives the first error an indicator threw during a flush. Without
+   * it the error is rethrown to the store mutator (after every indicator
+   * ran); with it the flush never throws (production charts).
+   */
+  onError?: (error: unknown) => void;
 }
 
 interface ActiveIndicator extends IndicatorTask {
@@ -77,6 +83,7 @@ export class IndicatorEngine {
   private readonly unsubscribeStore: () => void;
   private readonly getProfiler: () => RenderProfiler;
   private readonly backend: IndicatorBackend;
+  private readonly onError: ((error: unknown) => void) | undefined;
   private readonly stats = new IndicatorStatsCollector();
   private seq = 0;
 
@@ -87,6 +94,7 @@ export class IndicatorEngine {
     this.registry = options.registry ?? createIndicatorRegistry();
     this.getProfiler = options.getProfiler ?? (() => NOOP_PROFILER);
     this.backend = options.backend ?? synchronousIndicatorBackend;
+    this.onError = options.onError;
     this.scheduler = new IndicatorScheduler(
       (work) => this.run(work),
       options.requestFrame
@@ -323,7 +331,10 @@ export class IndicatorEngine {
       this.resultListeners.emit(updates);
     }
     if (failure !== undefined) {
-      throw failure;
+      if (this.onError === undefined) {
+        throw failure;
+      }
+      this.onError(failure);
     }
   }
 }

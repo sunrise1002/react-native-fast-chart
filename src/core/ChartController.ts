@@ -1,4 +1,5 @@
 import type { Candle } from '../data/Candle';
+import type { ChartErrorHandler } from './ChartErrors';
 import type { CandleIssue } from '../data/CandleValidation';
 import type { MergeResult } from '../data/HistoryMerge';
 import type { HistoryLoadState } from '../history/HistoryLoader';
@@ -123,6 +124,15 @@ export interface TradingChartController {
   setHasMoreHistory(hasMore: boolean): void;
   getHistoryState(): HistoryLoadState;
   subscribeHistoryState(listener: () => void): () => void;
+
+  /* -------------------------------- Telemetry -------------------------------- */
+
+  /**
+   * Non-fatal errors (dropped / rejected rows, failing indicators,
+   * `onLoadMore` failures) on the JS thread. Listener errors are
+   * swallowed. The `onError` prop subscribes here too.
+   */
+  subscribeErrors(listener: ChartErrorHandler): () => void;
 
   /** Releases listeners, schedulers and caches. The handle is unusable after. */
   dispose(): void;

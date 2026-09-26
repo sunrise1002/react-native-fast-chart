@@ -4,16 +4,20 @@ import type {
   ComposedGesture,
   GestureType,
 } from 'react-native-gesture-handler';
+import type { PriceFormatter, TimeFormatter } from '../axes/Formatters';
 import type { ChartConfig } from '../core/ChartConfig';
+import type { ChartErrorHandler } from '../core/ChartErrors';
 import type { Candle } from '../data/Candle';
 import type { TradingChartHandle } from '../engine/ChartHandle';
 import type { LoadMoreHandler } from '../history/HistoryLoader';
 import type { IndicatorInput } from '../indicators/Indicator';
 import type { CrosshairChangeHandler } from '../interaction/useCrosshairCallback';
+import type { ChartPerformanceSampleHandler } from '../performance/PerformanceSampler';
 import type { RealtimeStatus } from '../realtime/RealtimeStatus';
 import type { ChartTheme } from '../theme/ChartTheme';
 import type { ChartThemeOverride } from '../theme/mergeTheme';
 import type { DeepPartial } from '../utils/deepMerge';
+import type { ChartErrorFallback } from './ChartErrorBoundary';
 
 export interface TradingChartProps {
   /**
@@ -69,6 +73,39 @@ export interface TradingChartProps {
    * pan / pinch). Keep the reference stable.
    */
   crosshairGesture?: GestureType | ComposedGesture;
+  /**
+   * Custom price label format (axis, last price, crosshair, legend). Must
+   * be a **worklet** (`'worklet';` directive) with a stable reference; a
+   * throwing / non-string result falls back to the built-in format. See
+   * `PriceFormatter`.
+   */
+  priceFormatter?: PriceFormatter;
+  /**
+   * Custom time label format (axis ticks and crosshair). Same worklet
+   * contract as `priceFormatter`; see `TimeFormatter`.
+   */
+  timeFormatter?: TimeFormatter;
+  /**
+   * Error telemetry (JS thread): render errors caught by the chart's error
+   * boundary (`fatal: true`, the fallback is shown) and non-fatal issues
+   * — dropped / rejected rows, failing indicators, `onLoadMore` failures,
+   * an unresolvable time zone. Never called per frame. Handler errors are
+   * swallowed.
+   */
+  onError?: ChartErrorHandler;
+  /**
+   * Rendered instead of the chart after a render error: a node, or
+   * `(error, retry) => node`. Default: an empty view. Changing the
+   * `controller` also clears the error.
+   */
+  errorFallback?: ChartErrorFallback;
+  /**
+   * Performance telemetry: one report per
+   * `config.telemetry.performanceSampleMs` (default 5 s) with UI frame
+   * timing and layer build times. Frame collection only runs while this
+   * prop is set. Keep the reference stable.
+   */
+  onPerformanceSample?: ChartPerformanceSampleHandler;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }

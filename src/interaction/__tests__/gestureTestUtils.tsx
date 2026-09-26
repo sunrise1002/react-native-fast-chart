@@ -13,7 +13,7 @@ import type { ChartConfig } from '../../core/ChartConfig';
 import {
   asInternals,
   createTradingChartController,
-} from '../../engine/ChartControllerImpl';
+} from '../../engine/createTradingChartController';
 import { generateCandles } from '../../testing/fixtures/generateCandles';
 import type { DeepPartial } from '../../utils/deepMerge';
 import { GESTURE_TEST_IDS } from '../useChartGestures';

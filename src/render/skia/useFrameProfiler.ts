@@ -38,7 +38,8 @@ export function flushFrameSamples(
 
 /**
  * Hooks the P1 profiler into the UI frame loop. Disabled (callback
- * inactive, zero cost) unless `enabled` (`config.debug.profiling`).
+ * inactive, zero cost) unless `enabled` (`config.debug.profiling`) or an
+ * `onSamples` consumer (performance telemetry) is given.
  * Samples are buffered on the UI thread and flushed to JS every
  * `PROFILER_FLUSH_FRAMES` frames — never one JS call per frame.
  */
@@ -46,14 +47,19 @@ export function useFrameProfiler(
   enabled: boolean,
   frame: SharedValue<CandleFrame>,
   getMetrics: () => ChartMetrics,
-  extraFrame?: { readonly value: TimedFrame }
+  extraFrame?: { readonly value: TimedFrame },
+  onSamples?: (samples: readonly number[]) => void
 ): void {
   const batch = useSharedValue<number[]>([]);
   const lastBuiltAt = useSharedValue(Number.NaN);
   const lastExtraBuiltAt = useSharedValue(Number.NaN);
   // Resolved at flush time: the controller swaps its metrics instance when
   // `debug.profiling` changes (after this render's props were read).
-  const flush = (samples: number[]) => flushFrameSamples(getMetrics(), samples);
+  const flush = (samples: number[]) => {
+    flushFrameSamples(getMetrics(), samples);
+    onSamples?.(samples);
+  };
+  const active = enabled || onSamples !== undefined;
 
   const callback = useFrameCallback((info) => {
     const current = frame.value;
@@ -80,7 +86,7 @@ export function useFrameProfiler(
   }, false);
 
   useEffect(() => {
-    callback.setActive(enabled);
+    callback.setActive(active);
     return () => callback.setActive(false);
-  }, [callback, enabled]);
+  }, [callback, active]);
 }

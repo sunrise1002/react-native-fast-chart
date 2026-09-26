@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
-import { resolveChartConfig, type ChartConfig } from '../core/ChartConfig';
+import type { ChartConfig } from '../core/ChartConfig';
+import { chartIssue, type ChartErrorHandler } from '../core/ChartErrors';
 import type {
   ChartSettingsExtras,
   SetDataOptions,
@@ -10,14 +10,10 @@ import type {
 } from '../core/ChartController';
 import type { LogicalRange } from '../core/ChartTypes';
 import type { Candle } from '../data/Candle';
-import {
-  applyCandleDiff,
-  diffCandles,
-  type AppliedCandleDiff,
-} from '../data/CandleDiff';
+import type { AppliedCandleDiff } from '../data/CandleDiff';
 import { CandleStore } from '../data/CandleStore';
 import type { CandleIssue } from '../data/CandleValidation';
-import { mergeCandles, type MergeResult } from '../data/HistoryMerge';
+import type { MergeResult } from '../data/HistoryMerge';
 import { HistoryLoader, type HistoryLoadState } from '../history/HistoryLoader';
 import type { IndicatorInput } from '../indicators/Indicator';
 import type { IndicatorEntry } from '../indicators/IndicatorDefinitions';
@@ -25,7 +21,6 @@ import {
   IndicatorEngine,
   type IndicatorPatch,
 } from '../indicators/IndicatorEngine';
-import { upsertCandle } from '../data/CandleUpsert';
 import {
   removeIndicatorAndEmptyPane,
   removePaneWithIndicators,
@@ -45,12 +40,8 @@ import {
   createChartSettings,
   type ChartSettings,
 } from '../settings/ChartSettings';
-import type { DeepPartial } from '../utils/deepMerge';
 import { getVisibleLogicalRange } from '../viewport/VisibleRange';
-import type {
-  ChartControllerInternals,
-  TradingChartHandle,
-} from './ChartHandle';
+import type { ChartControllerInternals } from './ChartHandle';
 import {
   createChartSharedState,
   readTimeScale,
@@ -58,18 +49,16 @@ import {
   type ChartSharedState,
   type ViewportOptions,
 } from './ChartSharedState';
+import { ChartErrorChannel, reportHistoryErrors } from './ChartErrorChannel';
+import { ChartDataFeed } from './ChartDataFeed';
 import {
   resetViewport,
   scrollToRealtime,
   showLogicalRange,
 } from './ViewportActions';
 
-export type {
-  ChartControllerInternals,
-  TradingChartHandle,
-} from './ChartHandle';
-
-class ChartController implements ChartControllerInternals {
+/** Default `TradingChartHandle` implementation (see the factories). */
+export class ChartController implements ChartControllerInternals {
   readonly store = new CandleStore();
   readonly state: ChartSharedState;
   options: ViewportOptions;
@@ -78,16 +67,19 @@ class ChartController implements ChartControllerInternals {
   readonly panes = new PaneManager();
   readonly history: HistoryLoader;
   readonly realtimeStatus = new RealtimeStatusStore();
-  resetPolicy: ViewportResetPolicy = 'reset';
-  private lastCandlesProp: readonly Candle[] | null = null;
+  readonly errors = new ChartErrorChannel();
+  private readonly feed: ChartDataFeed;
   private readonly unsubscribeEntries: () => void;
+  private readonly unsubscribeHistory: () => void;
 
   constructor(config: ChartConfig) {
     this.state = createChartSharedState(config);
+    this.feed = new ChartDataFeed(this.store, this.errors);
     this.options = toViewportOptions(config);
     this.metrics = createChartMetrics({ enabled: config.debug.profiling });
     this.indicators = new IndicatorEngine(this.store, {
       getProfiler: () => this.metrics.channel('indicator'),
+      onError: (error) => this.errors.report(chartIssue('indicator', error)),
     });
     this.history = new HistoryLoader(this.store, {
       retryDelayMs: config.history.retryDelayMs,
@@ -95,6 +87,7 @@ class ChartController implements ChartControllerInternals {
     const syncPanes = () => this.panes.sync(this.indicators.getEntries());
     syncPanes();
     this.unsubscribeEntries = this.indicators.subscribeEntries(syncPanes);
+    this.unsubscribeHistory = reportHistoryErrors(this.history, this.errors);
   }
 
   get isAtRealtime(): SharedValue<boolean> {
@@ -111,35 +104,36 @@ class ChartController implements ChartControllerInternals {
 
   /* ---------------------------------- Data ---------------------------------- */
 
+  get resetPolicy(): ViewportResetPolicy {
+    return this.feed.resetPolicy;
+  }
+
   setData(candles: readonly Candle[], options?: SetDataOptions): CandleIssue[] {
-    this.resetPolicy = options?.viewport ?? 'reset';
-    this.lastCandlesProp = null;
-    return this.store.setData(candles);
+    return this.feed.setData(candles, options);
   }
 
   syncCandles(candles: readonly Candle[]): AppliedCandleDiff {
-    const diff = diffCandles(this.lastCandlesProp, candles, this.store.columns);
-    this.lastCandlesProp = candles;
-    if (diff.kind === 'reset') {
-      this.resetPolicy = 'reset';
-    }
-    return applyCandleDiff(this.store, candles, diff);
+    return this.feed.syncCandles(candles);
   }
 
   appendBar(candle: Candle): boolean {
-    return this.store.append(candle);
+    return this.feed.appendBar(candle);
   }
 
   updateLastBar(candle: Candle): boolean {
-    return this.store.updateLast(candle);
+    return this.feed.updateLastBar(candle);
   }
 
   upsertBar(candle: Candle): UpsertBarResult {
-    return upsertCandle(this.store, candle);
+    return this.feed.upsertBar(candle);
   }
 
   prependBars(candles: readonly Candle[]): MergeResult {
-    return mergeCandles(this.store, candles);
+    return this.feed.prependBars(candles);
+  }
+
+  subscribeErrors(listener: ChartErrorHandler): () => void {
+    return this.errors.subscribe(listener);
   }
 
   getBarCount(): number {
@@ -278,40 +272,12 @@ class ChartController implements ChartControllerInternals {
 
   dispose(): void {
     this.unsubscribeEntries();
+    this.unsubscribeHistory();
+    this.errors.clear();
     this.history.dispose();
     this.indicators.dispose();
     this.panes.dispose();
     this.realtimeStatus.dispose();
-    this.lastCandlesProp = null;
+    this.feed.release();
   }
-}
-
-/** Creates a chart handle outside React (e.g. in a store / service). */
-export function createTradingChartController(
-  config?: DeepPartial<ChartConfig> | null
-): TradingChartHandle {
-  return new ChartController(resolveChartConfig(config));
-}
-
-/**
- * Creates a stable chart handle for a host component; pass it to
- * `<TradingChart controller={...} />`. The config only seeds the initial
- * viewport; the chart's `config` prop stays authoritative.
- *
- * Not disposed automatically: every subscription the chart component
- * makes is released on unmount, and the handle only references its own
- * parts, so it is garbage-collected with the host (auto-disposal would
- * also break StrictMode's mount → unmount → mount check).
- */
-export function useTradingChartController(
-  config?: DeepPartial<ChartConfig> | null
-): TradingChartHandle {
-  return useState(() => createTradingChartController(config))[0];
-}
-
-/** Narrows a public handle to the internals the component needs. */
-export function asInternals(
-  handle: TradingChartHandle
-): ChartControllerInternals {
-  return handle as ChartControllerInternals;
 }

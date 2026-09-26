@@ -17,8 +17,10 @@ import { resolveChartConfig } from '../core/ChartConfig';
 import {
   asInternals,
   createTradingChartController,
-} from '../engine/ChartControllerImpl';
+} from '../engine/createTradingChartController';
 import type { TradingChartProps } from './TradingChartProps';
+import { ChartErrorBoundary } from './ChartErrorBoundary';
+import { useChartTelemetry } from './useChartTelemetry';
 import { useHistoryPagination } from './useHistoryPagination';
 import { toViewportOptions } from '../engine/ChartSharedState';
 import { connectIndicatorsToUi } from '../engine/IndicatorSync';
@@ -50,7 +52,7 @@ export type { TradingChartProps } from './TradingChartProps';
  * React renders only on prop, theme, config or layout changes — never per
  * gesture frame or realtime tick.
  */
-export function TradingChart({
+function TradingChartContent({
   candles,
   controller,
   ref,
@@ -63,6 +65,10 @@ export function TradingChart({
   historyLoadingIndicator,
   realtimeStatus,
   crosshairGesture,
+  priceFormatter,
+  timeFormatter,
+  onError,
+  onPerformanceSample,
   style,
   testID,
 }: TradingChartProps) {
@@ -91,6 +97,12 @@ export function TradingChart({
   useEffect(() => {
     handle.configure(resolved);
   }, [handle, resolved]);
+  const sampleHandler = useChartTelemetry(
+    handle,
+    resolved.axes.timeZone,
+    onError,
+    onPerformanceSample
+  );
 
   useEffect(
     () =>
@@ -219,6 +231,11 @@ export function TradingChart({
           theme={resolvedTheme}
           layout={resolved.layout}
           axes={resolved.axes}
+          symbol={resolved.symbol}
+          priceFormatter={priceFormatter}
+          timeFormatter={timeFormatter}
+          onPerformanceSample={sampleHandler}
+          performanceSampleMs={resolved.telemetry.performanceSampleMs}
           overlays={resolved.overlays}
           bodyRatio={resolved.viewport.bodyRatio}
           pixelRatio={pixelRatio}
@@ -238,6 +255,24 @@ export function TradingChart({
         ) : null}
       </View>
     </GestureDetector>
+  );
+}
+
+/**
+ * Candlestick trading chart (see `TradingChartProps`), wrapped in an error
+ * boundary: a render error shows `errorFallback` and is reported to
+ * `onError` instead of unmounting the host screen (spec Phase 20.1).
+ */
+export function TradingChart(props: TradingChartProps) {
+  return (
+    <ChartErrorBoundary
+      onError={props.onError}
+      fallback={props.errorFallback}
+      resetKey={props.controller}
+      testID={props.testID}
+    >
+      <TradingChartContent {...props} />
+    </ChartErrorBoundary>
   );
 }
 

@@ -26,7 +26,7 @@ import type { Candle } from '../../data/Candle';
 import {
   asInternals,
   createTradingChartController,
-} from '../../engine/ChartControllerImpl';
+} from '../../engine/createTradingChartController';
 import type { LoadMoreHandler } from '../../history/HistoryLoader';
 import { generateCandles } from '../../testing/fixtures/generateCandles';
 import { TradingChart } from '../TradingChart';

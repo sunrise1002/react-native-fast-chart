@@ -1,4 +1,5 @@
 import { priceToY, type PriceScaleSnapshot } from '../../viewport/PriceScale';
+import { clampCoordinate } from '../../utils/Sanitize';
 import { indexToX, type TimeScaleState } from '../../viewport/TimeScale';
 
 /*
@@ -18,21 +19,7 @@ export interface FillPathSink extends LinePathSink {
   close(): void;
 }
 
-/**
- * |y| limit, dp: keeps absurd values (e.g. 1e300 on a normal scale) inside
- * float32 range for the rasterizer; far beyond any plot, so on-screen
- * segments are unaffected in practice.
- */
-export const MAX_ABS_COORDINATE = 1e6;
-
-function clampY(y: number): number {
-  'worklet';
-  return y > MAX_ABS_COORDINATE
-    ? MAX_ABS_COORDINATE
-    : y < -MAX_ABS_COORDINATE
-      ? -MAX_ABS_COORDINATE
-      : y;
-}
+export { MAX_ABS_COORDINATE } from '../../utils/Sanitize';
 
 function firstIndex(start: number): number {
   'worklet';
@@ -52,7 +39,7 @@ function valueY(
 ): number {
   'worklet';
   const y = priceToY(price, values[i] as number);
-  return y - y === 0 ? clampY(y) : NaN;
+  return clampCoordinate(y);
 }
 
 /**

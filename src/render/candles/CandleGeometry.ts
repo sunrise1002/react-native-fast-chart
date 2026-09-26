@@ -1,3 +1,4 @@
+import { clampCoordinate } from '../../utils/Sanitize';
 import type { PriceScaleSnapshot } from '../../viewport/PriceScale';
 import { rightEdgeIndex, type TimeScaleState } from '../../viewport/TimeScale';
 import { lineWidthPx, sanitizePixelRatio } from '../PixelSnap';
@@ -131,8 +132,9 @@ export function buildCandleGeometry(
     const l = low[p] as number;
     const c = close[p] as number;
     const cxPx = (time.width - (right - i) * spacing) * pr;
-    const yh = (top + (max - h) * k) * pr;
-    const yl = (top + (max - l) * k) * pr;
+    // Clamped far outside the plot (float32-safe); `NaN` when non-finite.
+    const yh = clampCoordinate((top + (max - h) * k) * pr);
+    const yl = clampCoordinate((top + (max - l) * k) * pr);
     // `x - x === 0` is false for NaN and ±Infinity.
     if (
       cxPx - cxPx !== 0 ||
@@ -153,8 +155,8 @@ export function buildCandleGeometry(
     if (wickOnly) {
       wickLeft = Math.round(cxPx - halfWick);
     } else {
-      const yo = (top + (max - o) * k) * pr;
-      const yc = (top + (max - c) * k) * pr;
+      const yo = clampCoordinate((top + (max - o) * k) * pr);
+      const yc = clampCoordinate((top + (max - c) * k) * pr);
       if (yo - yo !== 0 || yc - yc !== 0) {
         continue;
       }

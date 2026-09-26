@@ -4,11 +4,11 @@ import type {
   SkPathBuilder,
 } from '@shopify/react-native-skia';
 import { generatePriceTicks, type PriceTicks } from '../../axes/PriceTicks';
-import { measureText } from '../../axes/TextMetrics';
+import type { LabelCache } from '../../axes/LabelCache';
 import type { TimeScaleState } from '../../viewport/TimeScale';
 import { layoutPriceAxisLabels } from '../axes/PriceAxisRenderer';
 import { buildGridGeometry } from '../grid/GridGeometry';
-import { formatIndicatorValue } from '../overlays/IndicatorLegendRenderer';
+import { cachedPaneLabel } from './axisLabels';
 import type { PaneDrawItem } from './PanePaints';
 import type { ChartFont, ChartPaints } from './SkiaResources';
 import type { PaneScaleFrame } from './usePaneScales';
@@ -28,6 +28,9 @@ export interface PaneAxesContext {
   thousandsSeparator: string;
   /** Reused tick buffer. */
   ticks: PriceTicks;
+  /** Label cache of the pane axes and a reused label array. */
+  cache: LabelCache;
+  labels: string[];
 }
 
 /**
@@ -63,7 +66,7 @@ export function recordPaneAxes(
   ctx: PaneAxesContext
 ): number {
   'worklet';
-  const { canvas, grid, font, ticks } = ctx;
+  const { canvas, grid, font, ticks, cache, labels } = ctx;
   const rect = { x: 0, y: 0, width: 0, height: 0 };
   const gridSink = {
     line(_h: boolean, x: number, y: number, w: number, h: number) {
@@ -107,18 +110,16 @@ export function recordPaneAxes(
       { lineWidth: ctx.gridLineWidth, pixelRatio: ctx.pixelRatio },
       gridSink
     );
-    const labels: string[] = [];
     for (let t = 0; t < ticks.count; t++) {
-      const value = ticks.values[t] as number;
-      const text = formatIndicatorValue(
-        value,
+      labels[t] = cachedPaneLabel(
+        cache,
+        font.glyphs,
+        ticks.values[t] as number,
         ticks.decimals,
         compact,
-        ticks.decimals,
         ctx.thousandsSeparator
       );
-      labels.push(text);
-      widest = Math.max(widest, measureText(font.glyphs, text));
+      widest = Math.max(widest, cache.lastWidth);
     }
     layoutPriceAxisLabels(
       ticks,

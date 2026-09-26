@@ -1,25 +1,22 @@
-import { Skia, type SkPath, type SkPicture } from '@shopify/react-native-skia';
+import type { SkPath, SkPicture } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { requiredAxisWidth } from '../../axes/AxisWidth';
-import { displayDecimals, formatPrice } from '../../axes/PriceFormat';
-import { createPriceTicks, generatePriceTicks } from '../../axes/PriceTicks';
-import { measureText } from '../../axes/TextMetrics';
-import { createTimeTicks } from '../../axes/TimeTicks';
+import { displayDecimals } from '../../axes/PriceFormat';
+import { generatePriceTicks } from '../../axes/PriceTicks';
 import type { ChartTimeZone } from '../../axes/TimeZone';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
 import { layoutPriceAxisLabels } from '../axes/PriceAxisRenderer';
 import { layoutTimeAxisLabels } from '../axes/TimeAxisRenderer';
 import { buildGridGeometry } from '../grid/GridGeometry';
-import {
-  computeLastPriceMarker,
-  createLastPriceMarker,
-} from '../overlays/LastPriceRenderer';
+import { computeLastPriceMarker } from '../overlays/LastPriceRenderer';
 import { centeredBaseline } from '../RenderModel';
+import { createAxesResources } from './axesResources';
+import { cachedPriceLabel, cachedTimeLabels } from './axisLabels';
 import { framePriceScale, frameTimeScale } from './frameScales';
 import { recordPaneAxes } from './paneAxes';
 import type { PaneDrawItem } from './PanePaints';
-import { computeTimeTicks, timeLabelSpacing, timeTickLabels } from './timeAxis';
+import { computeTimeTicks, timeLabelSpacing } from './timeAxis';
 import type { ChartFont, ChartPaints } from './SkiaResources';
 import type { PaneScaleFrame } from './usePaneScales';
 
@@ -78,18 +75,17 @@ export function useAxesLayer(
   grid: SharedValue<SkPath>;
   picture: SharedValue<SkPicture>;
 } {
-  const resources = useMemo(
-    () => ({
-      grid: Skia.PathBuilder.Make(),
-      recorder: Skia.PictureRecorder(),
-      paneTicks: createPriceTicks(),
-    }),
-    []
-  );
   const { series, barSpacing, rightOffset, plotWidth, plotHeight } = state;
   const { priceMin, priceMax, priceAxisWidth, stackHeight } = state;
   const { font, paints, gridLineWidth, pixelRatio, timeAxisHeight } = style;
   const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
+  const resources = useMemo(
+    () => createAxesResources(timeZone, gridLineWidth, pixelRatio),
+    // The label caches are only valid for one glyph table / separator.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [timeZone, font.glyphs, sep, gridLineWidth, pixelRatio]
+  );
+
   const { showLastPrice, paneScales } = style;
   const panes = style.panes ?? NO_PANES;
   const spacing = useMemo(
@@ -103,18 +99,24 @@ export function useAxesLayer(
 
   const frame = useDerivedValue<AxesFrame>(() => {
     const data = series.value;
+    const { grid, recorder, priceTicks, timeTicks, marker, caches, rect } =
+      resources;
     const time = frameTimeScale(
       plotWidth,
       barSpacing,
       rightOffset,
-      data.length
+      data.length,
+      resources.time
     );
-    const price = framePriceScale(plotHeight, priceMin, priceMax);
+    const price = framePriceScale(
+      plotHeight,
+      priceMin,
+      priceMax,
+      resources.price
+    );
     const axisX = time.width;
-    const { grid, recorder } = resources;
 
     // Price ticks + last price.
-    const priceTicks = createPriceTicks();
     generatePriceTicks(
       price.min,
       price.max,
@@ -123,26 +125,24 @@ export function useAxesLayer(
       priceTicks,
       pricePrecision
     );
-    const marker = createLastPriceMarker();
+    marker.visible = false;
     const badgeHeight = lineHeight + 2 * BADGE_PADDING_Y;
     if (showLastPrice) {
       computeLastPriceMarker(data, price, badgeHeight, marker);
     }
 
     // Time ticks (daily+ bars are calendar days: UTC dates).
-    const timeTicks = createTimeTicks();
     const withSeconds = computeTimeTicks(
       data,
       time,
       barMs.value,
       spacing,
-      timeZone,
+      resources.timeAxis,
       timeTicks
     );
 
     // Grid: price rows in the price pane, time columns across all panes.
     grid.reset();
-    const rect = { x: 0, y: 0, width: 0, height: 0 };
     const gridSink = {
       line(_h: boolean, x: number, y: number, w: number, h: number) {
         rect.x = x;
@@ -152,8 +152,11 @@ export function useAxesLayer(
         grid.addRect(rect);
       },
     };
-    const gridOptions = { lineWidth: gridLineWidth, pixelRatio };
-    const stack = { ...price, top: 0, height: stackHeight.value };
+    const { gridOptions, stack } = resources;
+    stack.mode = price.mode;
+    stack.min = price.min;
+    stack.max = price.max;
+    stack.height = stackHeight.value;
     buildGridGeometry(
       time,
       price,
@@ -178,16 +181,17 @@ export function useAxesLayer(
         canvas.drawText(text, x, baseline, paints.axisText, skFont);
       },
     };
-    const priceLabels: string[] = [];
+    const priceLabels = resources.priceLabels.texts;
     let widest = 0;
     for (let i = 0; i < priceTicks.count; i++) {
-      const text = formatPrice(
+      priceLabels[i] = cachedPriceLabel(
+        caches.price,
+        glyphs,
         priceTicks.values[i] as number,
         priceTicks.decimals,
         sep
       );
-      priceLabels.push(text);
-      widest = Math.max(widest, measureText(glyphs, text));
+      widest = Math.max(widest, caches.price.lastWidth);
     }
     let lastText = '';
     if (marker.visible) {
@@ -202,12 +206,14 @@ export function useAxesLayer(
           bullish ? paints.lastPriceLineUp : paints.lastPriceLineDown
         );
       }
-      lastText = formatPrice(
+      lastText = cachedPriceLabel(
+        caches.price,
+        glyphs,
         marker.price,
         displayDecimals(pricePrecision, marker.price),
         sep
       );
-      widest = Math.max(widest, measureText(glyphs, lastText));
+      widest = Math.max(widest, caches.price.lastWidth);
     }
     layoutPriceAxisLabels(
       priceTicks,
@@ -219,12 +225,24 @@ export function useAxesLayer(
         : null,
       sink
     );
-    const timeLabels = timeTickLabels(timeTicks, withSeconds);
+    const timeLabels = cachedTimeLabels(
+      caches.time,
+      glyphs,
+      timeTicks,
+      withSeconds,
+      resources.timeLabels
+    );
     layoutTimeAxisLabels(
       timeTicks,
-      timeLabels,
+      timeLabels.texts,
       time,
-      { top: stack.height, height: timeAxisHeight, metrics, glyphs },
+      {
+        top: stack.height,
+        height: timeAxisHeight,
+        metrics,
+        glyphs,
+        widths: timeLabels.widths,
+      },
       sink
     );
     const paneWidest = recordPaneAxes(panes, paneScales?.value, time, {
@@ -238,6 +256,8 @@ export function useAxesLayer(
       textX: axisX + AXIS_LABEL_PADDING,
       thousandsSeparator: sep,
       ticks: resources.paneTicks,
+      cache: caches.pane,
+      labels: resources.paneLabels.texts,
     });
     widest = Math.max(widest, paneWidest);
     if (marker.visible) {

@@ -23,6 +23,8 @@ export interface TimeAxisLayout {
   height: number;
   metrics: TextBoxMetrics;
   glyphs: GlyphWidthTable;
+  /** Pre-measured label widths (`widths[i]` for tick `i`), if known. */
+  widths?: ArrayLike<number>;
 }
 
 /** Emits `labels[i]` for tick `i`; returns the number emitted. */
@@ -45,7 +47,9 @@ export function layoutTimeAxisLabels(
     if (text === undefined || text === '' || !Number.isFinite(x)) {
       continue;
     }
-    const width = measureText(layout.glyphs, text);
+    const known = layout.widths?.[i];
+    const width =
+      known !== undefined ? known : measureText(layout.glyphs, text);
     const left = x - width / 2;
     if (left < 0 || left + width > time.width) {
       continue;

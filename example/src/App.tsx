@@ -9,9 +9,10 @@ import {
 import { defaultDarkTheme, defaultLightTheme } from 'react-native-fast-chart';
 import { Toggle } from './components/Toggle';
 import { BenchmarkScreen } from './screens/BenchmarkScreen';
+import { MarketScreen } from './screens/MarketScreen';
 import { PlaygroundScreen, type ThemeMode } from './screens/PlaygroundScreen';
 
-type Screen = 'playground' | 'benchmark';
+type Screen = 'playground' | 'market' | 'benchmark';
 
 function ScreenSwitch({
   screen,
@@ -23,7 +24,7 @@ function ScreenSwitch({
   onChange: (screen: Screen) => void;
 }) {
   const theme =
-    screen === 'playground' && mode === 'light'
+    screen !== 'benchmark' && mode === 'light'
       ? defaultLightTheme
       : defaultDarkTheme;
   const insets = useSafeAreaInsets();
@@ -39,6 +40,12 @@ function ScreenSwitch({
         active={screen === 'playground'}
         theme={theme}
         onPress={() => onChange('playground')}
+      />
+      <Toggle
+        label="Market"
+        active={screen === 'market'}
+        theme={theme}
+        onPress={() => onChange('market')}
       />
       <Toggle
         label="Benchmark"
@@ -62,6 +69,10 @@ export default function App() {
         <View style={styles.root}>
           {screen === 'playground' ? (
             <PlaygroundScreen mode={mode} onModeChange={setMode} />
+          ) : screen === 'market' ? (
+            <MarketScreen
+              theme={mode === 'dark' ? defaultDarkTheme : defaultLightTheme}
+            />
           ) : (
             <BenchmarkScreen />
           )}

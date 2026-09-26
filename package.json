@@ -4,6 +4,7 @@
   "description": "High-performance candlestick trading chart for React Native built on Skia, Reanimated and Gesture Handler",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "react-native-fast-chart-source": "./src/index.ts",

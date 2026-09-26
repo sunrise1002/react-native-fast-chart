@@ -62,12 +62,20 @@ describe('resolveOverlaySpecs', () => {
           color: '#111',
           width: DEFAULT_INDICATOR_LINE_WIDTH,
           opacity: 1,
+          offset: 0,
+          dots: false,
         },
       ],
-      legend: [{ output: 0, color: '#111' }],
+      legend: [{ output: 0, color: '#111', offset: 0 }],
     });
     expect(bb?.fills).toEqual([
-      { upper: 0, lower: 2, color: '#222', opacity: DEFAULT_BAND_FILL_OPACITY },
+      {
+        upper: 0,
+        lower: 2,
+        color: '#222',
+        opacity: DEFAULT_BAND_FILL_OPACITY,
+        offset: 0,
+      },
     ]);
     expect(bb?.strokes.map((s) => s.output)).toEqual([1, 0, 2]);
     expect(bb?.legend.map((l) => l.output)).toEqual([1, 0, 2]);
@@ -203,10 +211,10 @@ describe('resolveOverlaySpecs', () => {
       PALETTE
     );
     expect(overlayAutoScaleRefs(specs)).toEqual([
-      { id: 'ema', output: 0 },
-      { id: 'bollinger', output: 1 },
-      { id: 'bollinger', output: 0 },
-      { id: 'bollinger', output: 2 },
+      { id: 'ema', output: 0, offset: 0 },
+      { id: 'bollinger', output: 1, offset: 0 },
+      { id: 'bollinger', output: 0, offset: 0 },
+      { id: 'bollinger', output: 2, offset: 0 },
     ]);
   });
 

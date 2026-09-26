@@ -10,7 +10,10 @@ import { paneRangeFromValues } from '../../panes/PaneScale';
 import { padPriceRange } from '../../viewport/AutoScaleTarget';
 import type { PriceScaleOptions } from '../../viewport/PriceScale';
 import type { TimeScaleState } from '../../viewport/TimeScale';
-import { getVisibleRange } from '../../viewport/VisibleRange';
+import {
+  getViewIndexRange,
+  getVisibleRange,
+} from '../../viewport/VisibleRange';
 import {
   conflateCandles,
   conflationGroupSize,
@@ -140,7 +143,18 @@ export function cachedAutoScaleTarget(
     return false;
   }
   if (refs.length > 0) {
-    cachedExtendRange(cache, set, data, refs, startIndex, endIndex, out);
+    const view = getViewIndexRange(time, cache.frame.view);
+    cachedExtendRange(
+      cache,
+      set,
+      data,
+      refs,
+      startIndex,
+      endIndex,
+      out,
+      view.startIndex,
+      view.endIndex
+    );
   }
   padPriceRange(out, options);
   return true;
@@ -155,14 +169,16 @@ export function cachedPaneRange(
   refs: readonly UiOutputRef[],
   start: number,
   end: number,
-  out: PriceRange
+  out: PriceRange,
+  left: number = start,
+  right: number = end
 ): boolean {
   'worklet';
   const values = cache.extremes;
   values.min = Infinity;
   values.max = -Infinity;
   if (scale.kind !== 'fixed') {
-    cachedExtendRange(cache, set, data, refs, start, end, values);
+    cachedExtendRange(cache, set, data, refs, start, end, values, left, right);
   }
   return paneRangeFromValues(scale, values, out);
 }

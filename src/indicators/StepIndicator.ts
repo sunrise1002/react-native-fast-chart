@@ -1,5 +1,10 @@
 import type { CandleColumns } from '../data/CandleBuffer';
-import type { Indicator, IndicatorResult } from './Indicator';
+import {
+  DEFAULT_INDICATOR_CONTEXT,
+  type Indicator,
+  type IndicatorContext,
+  type IndicatorResult,
+} from './Indicator';
 import {
   createIndicatorResult,
   ensureResultCapacity,
@@ -18,8 +23,11 @@ export interface StepKernel<TConfig, TState> {
   readonly type: string;
   /** Number of output columns. */
   readonly outputs: number;
-  /** Fresh state (no bar folded in yet). */
-  init(config: TConfig): TState;
+  /**
+   * Fresh state (no bar folded in yet). `context` carries chart-level
+   * inputs (time zone); it only changes through a full recalculation.
+   */
+  init(config: TConfig, context: IndicatorContext): TState;
   step(
     state: TState,
     input: CandleColumns,
@@ -64,13 +72,14 @@ export function createStepIndicator<TConfig, TState>(
 
   function calculate(
     input: CandleColumns,
-    config: TConfig
+    config: TConfig,
+    context: IndicatorContext = DEFAULT_INDICATOR_CONTEXT
   ): IndicatorResult<TState> {
     const n = input.length > 0 ? input.length : 0;
     const result = createIndicatorResult(
       kernel.outputs,
       growCapacity(n),
-      kernel.init(config)
+      kernel.init(config, context)
     );
     advance(result, input, config);
     result.changedFrom = 0;
@@ -81,13 +90,14 @@ export function createStepIndicator<TConfig, TState>(
     previous: IndicatorResult<TState>,
     input: CandleColumns,
     changedIndex: number,
-    config: TConfig
+    config: TConfig,
+    context?: IndicatorContext
   ): IndicatorResult<TState> {
     if (
       !(changedIndex >= previous.committed) ||
       input.length < previous.length
     ) {
-      return calculate(input, config);
+      return calculate(input, config, context);
     }
     const from = previous.committed;
     advance(previous, input, config);

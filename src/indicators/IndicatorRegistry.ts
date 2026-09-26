@@ -44,6 +44,23 @@ export type IndicatorSeriesDescriptor =
       upper: number;
       lower: number;
       defaultColor?: ColorValue;
+      /**
+       * Stroke both edges and show them in the legend (default `true`).
+       * `false` = fill only (the edges are drawn by other series).
+       */
+      edges?: boolean;
+      /**
+       * Two-color "cloud": where `lower` is above `upper` the area is
+       * filled with this color instead (Ichimoku bearish cloud).
+       */
+      downColor?: ColorValue;
+    }
+  | {
+      /** One dot per bar (Parabolic SAR). */
+      kind: 'points';
+      name: string;
+      output: number;
+      defaultColor?: ColorValue;
     };
 
 /**
@@ -93,6 +110,11 @@ export interface IndicatorMeta {
   /** Y-scale strategy; default `'price'` for overlays, `'auto'` for panes. */
   scale?: IndicatorScaleSpec;
   valueFormat?: IndicatorValueFormat;
+  /**
+   * `true` when results depend on the chart `IndicatorContext` (time
+   * zone): a context change recalculates the indicator.
+   */
+  usesContext?: boolean;
 }
 
 /**
@@ -108,6 +130,13 @@ export interface IndicatorModule<TConfig = unknown> {
   formatLabel(config: TConfig): string;
   /** Guide levels for a resolved config (pane indicators). */
   guides?(config: TConfig): IndicatorGuides;
+  /**
+   * Horizontal display shift per output column, in bars (TradingView
+   * plot `offset`): value `i` of output `k` is drawn at bar
+   * `i + offsets[k]`. Positive values reach into the empty area right of
+   * the last bar (Ichimoku leading spans). Omitted = no shift.
+   */
+  outputOffsets?(config: TConfig): readonly number[];
 }
 
 /** Scale strategy of `meta` with the placement default applied. */

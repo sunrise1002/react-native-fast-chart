@@ -17,6 +17,10 @@ export interface LineStrokeSpec {
   color: ColorValue;
   width: number;
   opacity: number;
+  /** Display shift in bars (`IndicatorEntry.offsets`). */
+  offset: number;
+  /** Draw one dot per bar (points series) instead of a polyline. */
+  dots: boolean;
 }
 
 export interface BandFillSpec {
@@ -24,11 +28,17 @@ export interface BandFillSpec {
   lower: number;
   color: ColorValue;
   opacity: number;
+  /** Display shift in bars (of the upper edge; both edges share it). */
+  offset: number;
+  /** Cloud: fill where `lower` is above `upper` with this color. */
+  downColor?: ColorValue;
 }
 
 export interface LegendValueSpec {
   output: number;
   color: ColorValue;
+  /** Display shift in bars: the legend of bar `j` shows value `j − offset`. */
+  offset: number;
 }
 
 export interface OverlayRenderSpec {
@@ -120,25 +130,35 @@ export function resolveIndicatorDrawSpec(
     legend: [],
     histograms: [],
   };
+  const offsetOf = (output: number): number => entry.offsets?.[output] ?? 0;
+  const line = (output: number, color: ColorValue, dots: boolean): void => {
+    const offset = offsetOf(output);
+    spec.strokes.push({ output, color, width, opacity, offset, dots });
+    spec.legend.push({ output, color, offset });
+  };
   meta.series.forEach((series, j) => {
     const explicit = style.colors?.[j];
     const color = explicit ?? series.defaultColor ?? base;
     if (series.kind === 'band') {
       if (style.fill !== false) {
-        spec.fills.push({
+        const fill: BandFillSpec = {
           upper: series.upper,
           lower: series.lower,
           color,
           opacity: unit(style.fillOpacity, DEFAULT_BAND_FILL_OPACITY),
-        });
+          offset: offsetOf(series.upper),
+        };
+        if (series.downColor !== undefined) {
+          fill.downColor = series.downColor;
+        }
+        spec.fills.push(fill);
       }
-      for (const output of [series.upper, series.lower]) {
-        spec.strokes.push({ output, color, width, opacity });
-        spec.legend.push({ output, color });
+      if (series.edges !== false) {
+        line(series.upper, color, false);
+        line(series.lower, color, false);
       }
-    } else if (series.kind === 'line') {
-      spec.strokes.push({ output: series.output, color, width, opacity });
-      spec.legend.push({ output: series.output, color });
+    } else if (series.kind === 'line' || series.kind === 'points') {
+      line(series.output, color, series.kind === 'points');
     } else {
       const mode = style.histogramColorMode ?? series.colorMode ?? 'sign';
       const colors = histogramColors(
@@ -153,6 +173,7 @@ export function resolveIndicatorDrawSpec(
       spec.legend.push({
         output: series.output,
         color: colors[0] as ColorValue,
+        offset: 0,
       });
     }
   });
@@ -206,6 +227,8 @@ const NO_VOLUME_COLORS: HistogramThemeColors = {
 export interface OverlayOutputRef {
   id: string;
   output: number;
+  /** Display shift in bars (see `LineStrokeSpec.offset`). */
+  offset: number;
 }
 
 export function overlayAutoScaleRefs(
@@ -214,7 +237,7 @@ export function overlayAutoScaleRefs(
   const refs: OverlayOutputRef[] = [];
   for (const spec of specs) {
     for (const stroke of spec.strokes) {
-      refs.push({ id: spec.id, output: stroke.output });
+      refs.push({ id: spec.id, output: stroke.output, offset: stroke.offset });
     }
   }
   return refs;

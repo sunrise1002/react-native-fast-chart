@@ -3,7 +3,10 @@ import type { ChartSharedState } from '../../engine/ChartSharedState';
 import type { PaneLayoutFrame } from '../../panes/PaneLayout';
 import { cachedPaneRange } from '../conflation/ConflatedLayers';
 import type { PriceScaleSnapshot } from '../../viewport/PriceScale';
-import { getVisibleRange } from '../../viewport/VisibleRange';
+import {
+  getViewIndexRange,
+  getVisibleRange,
+} from '../../viewport/VisibleRange';
 import { frameTimeScale } from './frameScales';
 import type { PaneDrawItem } from './PanePaints';
 
@@ -69,6 +72,7 @@ export function usePaneScales(
       scratch.time
     );
     const range = getVisibleRange(time, 0, scratch.range);
+    const view = getViewIndexRange(time, scratch.view);
     const scales: PriceScaleSnapshot[] = [];
     const out = scratch.price;
     for (let i = 0; i < items.length; i++) {
@@ -87,7 +91,9 @@ export function usePaneScales(
           item.refs,
           range.startIndex,
           range.endIndex,
-          out
+          out,
+          view.startIndex,
+          view.endIndex
         );
       }
       scales.push({

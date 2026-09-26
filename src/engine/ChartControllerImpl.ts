@@ -80,6 +80,7 @@ export class ChartController implements ChartControllerInternals {
     this.indicators = new IndicatorEngine(this.store, {
       getProfiler: () => this.metrics.channel('indicator'),
       onError: (error) => this.errors.report(chartIssue('indicator', error)),
+      context: { timeZone: config.axes.timeZone },
     });
     this.history = new HistoryLoader(this.store, {
       retryDelayMs: config.history.retryDelayMs,
@@ -97,6 +98,7 @@ export class ChartController implements ChartControllerInternals {
   configure(config: ChartConfig): void {
     this.options = toViewportOptions(config);
     this.history.setRetryDelay(config.history.retryDelayMs);
+    this.indicators.setContext({ timeZone: config.axes.timeZone });
     if (this.metrics.enabled !== config.debug.profiling) {
       this.metrics = createChartMetrics({ enabled: config.debug.profiling });
     }

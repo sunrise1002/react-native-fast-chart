@@ -72,48 +72,67 @@ export function rsiFromAverages(gain: number, loss: number): number {
   return 100 - 100 / (1 + gain / loss);
 }
 
-export const rsiKernel: StepKernel<RsiConfig, RsiState> = {
-  type: 'rsi',
-  outputs: 1,
-  init: () => ({
+/** Fresh RSI recursion state. */
+export function createRsiState(): RsiState {
+  return {
     prev: NaN,
     gain: createSeededAverage(),
     loss: createSeededAverage(),
-  }),
-  step(state, input, i, { period, source }, outputs, commit) {
-    const out = outputs[0] as Float64Array;
-    const x = readSource(input, i, source);
-    if (!isFiniteValue(x)) {
-      out[i] = NaN;
-      return;
-    }
-    if (Number.isNaN(state.prev)) {
-      out[i] = NaN;
-      if (commit) {
-        state.prev = x;
-      }
-      return;
-    }
-    const change = x - state.prev;
-    const alpha = rmaAlpha(period);
-    const gain = stepSeededAverage(
-      state.gain,
-      change > 0 ? change : 0,
-      period,
-      alpha,
-      commit
-    );
-    const loss = stepSeededAverage(
-      state.loss,
-      change < 0 ? -change : 0,
-      period,
-      alpha,
-      commit
-    );
-    out[i] = Number.isNaN(gain) ? NaN : rsiFromAverages(gain, loss);
+  };
+}
+
+/**
+ * RSI of the next source value `x` (see the module docs); folds `x` into
+ * `state` only when `commit`. Shared with Stochastic RSI.
+ */
+export function stepRsi(
+  state: RsiState,
+  x: number,
+  period: number,
+  commit: boolean
+): number {
+  if (!isFiniteValue(x)) {
+    return NaN;
+  }
+  if (Number.isNaN(state.prev)) {
     if (commit) {
       state.prev = x;
     }
+    return NaN;
+  }
+  const change = x - state.prev;
+  const alpha = rmaAlpha(period);
+  const gain = stepSeededAverage(
+    state.gain,
+    change > 0 ? change : 0,
+    period,
+    alpha,
+    commit
+  );
+  const loss = stepSeededAverage(
+    state.loss,
+    change < 0 ? -change : 0,
+    period,
+    alpha,
+    commit
+  );
+  if (commit) {
+    state.prev = x;
+  }
+  return Number.isNaN(gain) ? NaN : rsiFromAverages(gain, loss);
+}
+
+export const rsiKernel: StepKernel<RsiConfig, RsiState> = {
+  type: 'rsi',
+  outputs: 1,
+  init: createRsiState,
+  step(state, input, i, { period, source }, outputs, commit) {
+    (outputs[0] as Float64Array)[i] = stepRsi(
+      state,
+      readSource(input, i, source),
+      period,
+      commit
+    );
   },
 };
 

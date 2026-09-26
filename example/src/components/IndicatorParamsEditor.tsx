@@ -65,12 +65,13 @@ function ParamField({
   const [text, setText] = useState(String(current));
   const [hint, setHint] = useState('');
   const color = theme.axis.textColor;
-  if (param.kind === 'source') {
+  if (param.kind === 'source' || param.kind === 'choice') {
+    const options: readonly string[] = param.options;
     return (
       <View style={styles.row}>
         <Text style={[styles.label, { color }]}>{param.label}</Text>
         <View style={styles.options}>
-          {param.options.map((option) => (
+          {options.map((option) => (
             <Toggle
               key={option}
               label={option}

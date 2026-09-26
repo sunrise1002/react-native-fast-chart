@@ -26,8 +26,17 @@ export interface SourceParam {
   default: PriceSource;
 }
 
+/** Param picking one of a fixed set of string options (e.g. VWAP anchor). */
+export interface ChoiceParam {
+  key: string;
+  label: string;
+  kind: 'choice';
+  options: readonly string[];
+  default: string;
+}
+
 /** Descriptor of an indicator param (drives settings UIs and validation). */
-export type IndicatorParam = NumberParam | SourceParam;
+export type IndicatorParam = NumberParam | SourceParam | ChoiceParam;
 
 /** A resolved indicator config value. */
 export type IndicatorConfigValue = number | string;
@@ -55,6 +64,16 @@ export function resolveSourceParam(
 ): PriceSource {
   const value = raw?.[param.key];
   return param.options.find((s) => s === value) ?? param.default;
+}
+
+/** One of the param's options (default otherwise). */
+export function resolveChoiceParam<T extends string>(
+  raw: RawIndicatorConfig | null | undefined,
+  param: ChoiceParam & { readonly options: readonly T[]; readonly default: T }
+): T {
+  const value = raw?.[param.key];
+  const options: readonly T[] = param.options;
+  return options.find((o) => o === value) ?? param.default;
 }
 
 /** Default config object of a schema (`key → default`). */
@@ -98,8 +117,8 @@ export function sourceParam(defaultValue: PriceSource = 'close'): SourceParam {
 
 /**
  * Short legend label: `shortName` followed by the resolved numeric params
- * in schema order, plus the source when it differs from the default
- * (`EMA 20`, `BB 20 2`, `SMA 50 hl2`).
+ * in schema order, plus the source / choice when it differs from the
+ * default (`EMA 20`, `BB 20 2`, `SMA 50 hl2`).
  */
 export function formatIndicatorLabel(
   shortName: string,
@@ -109,7 +128,7 @@ export function formatIndicatorLabel(
   let label = shortName;
   for (const p of params) {
     const value = config[p.key];
-    if (p.kind === 'source') {
+    if (p.kind === 'source' || p.kind === 'choice') {
       if (value !== p.default && typeof value === 'string') {
         label += ' ' + value;
       }

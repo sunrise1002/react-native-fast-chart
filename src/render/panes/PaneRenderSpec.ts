@@ -140,8 +140,11 @@ export function resolvePaneSpecs(
       const draw = resolveIndicatorDrawSpec(entry, base, theme.volume);
       spec.indicators.push(draw);
       addGuides(spec.guides, entry);
-      for (const { output } of [...draw.histograms, ...draw.strokes]) {
-        spec.refs.push({ id: draw.id, output });
+      for (const { output } of draw.histograms) {
+        spec.refs.push({ id: draw.id, output, offset: 0 });
+      }
+      for (const { output, offset } of draw.strokes) {
+        spec.refs.push({ id: draw.id, output, offset });
       }
     }
     specs.push(spec);

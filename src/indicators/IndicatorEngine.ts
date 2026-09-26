@@ -5,7 +5,12 @@ import {
 } from '../performance/RenderProfiler';
 import { ListenerSet } from '../utils/ListenerSet';
 import { createIndicatorRegistry } from './builtins';
-import type { IndicatorInput, IndicatorResult } from './Indicator';
+import {
+  DEFAULT_INDICATOR_CONTEXT,
+  type IndicatorContext,
+  type IndicatorInput,
+  type IndicatorResult,
+} from './Indicator';
 import { IndicatorCache } from './IndicatorCache';
 import {
   snapshotUpdates,
@@ -50,6 +55,8 @@ export interface IndicatorEngineOptions {
    * ran); with it the flush never throws (production charts).
    */
   onError?: (error: unknown) => void;
+  /** Initial chart-level inputs (default: UTC sessions). */
+  context?: IndicatorContext;
 }
 
 interface ActiveIndicator extends IndicatorTask {
@@ -87,6 +94,7 @@ export class IndicatorEngine {
   private readonly onError: ((error: unknown) => void) | undefined;
   private readonly stats = new IndicatorStatsCollector();
   private seq = 0;
+  private context: IndicatorContext;
 
   constructor(
     private readonly store: CandleStore,
@@ -96,6 +104,7 @@ export class IndicatorEngine {
     this.getProfiler = options.getProfiler ?? (() => NOOP_PROFILER);
     this.backend = options.backend ?? synchronousIndicatorBackend;
     this.onError = options.onError;
+    this.context = options.context ?? DEFAULT_INDICATOR_CONTEXT;
     this.scheduler = new IndicatorScheduler(
       (work) => this.run(work),
       options.requestFrame
@@ -174,6 +183,27 @@ export class IndicatorEngine {
     });
     this.order = ids.filter((id, i) => ids.indexOf(id) === i);
     this.commitEntries();
+  }
+
+  /**
+   * Sets the chart-level inputs (time zone). Indicators whose meta sets
+   * `usesContext` are recalculated when it changes; a no-op otherwise.
+   */
+  setContext(context: IndicatorContext): void {
+    if (Object.is(context.timeZone, this.context.timeZone)) {
+      return;
+    }
+    this.context = context;
+    for (const task of this.active.values()) {
+      if (task.module.meta.usesContext === true) {
+        task.dirty = true;
+        this.scheduler.request();
+      }
+    }
+  }
+
+  getContext(): IndicatorContext {
+    return this.context;
   }
 
   /** Active indicators in display order (stable reference until a change). */
@@ -320,6 +350,7 @@ export class IndicatorEngine {
         version: store.version,
         resetVersion: store.resetVersion,
         firstTime: store.firstTime,
+        context: this.context,
       },
       tasks,
       work,

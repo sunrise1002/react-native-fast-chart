@@ -19,20 +19,25 @@ export interface FillPathSink extends LinePathSink {
   close(): void;
 }
 
+/** Receives the dots of a points series (a Skia path builder). */
+export interface PointPathSink {
+  addCircle(x: number, y: number, radius: number): void;
+}
+
 export { MAX_ABS_COORDINATE } from '../../utils/Sanitize';
 
-function firstIndex(start: number): number {
+export function firstIndex(start: number): number {
   'worklet';
   return start > 0 ? Math.ceil(start) : 0;
 }
 
-function lastIndex(end: number, length: number): number {
+export function lastIndex(end: number, length: number): number {
   'worklet';
   return end < length - 1 ? Math.floor(end) : length - 1;
 }
 
 /** Screen y of `values[i]`, `NaN` when it cannot be drawn. */
-function valueY(
+export function valueY(
   values: ArrayLike<number>,
   i: number,
   price: PriceScaleSnapshot
@@ -142,4 +147,35 @@ export function buildBandFill(
     polygons++;
   }
   return polygons;
+}
+
+/**
+ * Streams one dot of `radius` per drawable value of `values[start..end]`
+ * (Parabolic SAR), all into one path. Returns the number of dots.
+ */
+export function buildPointGeometry(
+  values: ArrayLike<number>,
+  length: number,
+  start: number,
+  end: number,
+  time: TimeScaleState,
+  price: PriceScaleSnapshot,
+  radius: number,
+  sink: PointPathSink
+): number {
+  'worklet';
+  if (Number.isNaN(start) || Number.isNaN(end) || !(radius > 0)) {
+    return 0;
+  }
+  const to = lastIndex(end, Math.min(length, values.length));
+  let points = 0;
+  for (let i = firstIndex(start); i <= to; i++) {
+    const x = clampCoordinate(indexToX(time, i));
+    const y = valueY(values, i, price);
+    if (x - x === 0 && y - y === 0) {
+      sink.addCircle(x, y, radius);
+      points++;
+    }
+  }
+  return points;
 }

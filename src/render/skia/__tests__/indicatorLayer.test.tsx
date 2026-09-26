@@ -299,11 +299,18 @@ describe('useIndicatorLayer', () => {
             {
               upper: 7,
               lower: 8,
+              offset: 0,
               paint: drawList.items[0]?.fills[0]?.paint as never,
+              downPaint: null,
             },
           ],
           strokes: [
-            { output: 9, paint: drawList.items[0]?.strokes[0]?.paint as never },
+            {
+              output: 9,
+              offset: 0,
+              radius: 0,
+              paint: drawList.items[0]?.strokes[0]?.paint as never,
+            },
           ],
         },
       ],

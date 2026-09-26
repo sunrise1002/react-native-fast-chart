@@ -1,3 +1,4 @@
+import type { ChartTimeZone } from '../axes/TimeZone';
 import type { UnixMs } from '../data/Candle';
 import type { CandleColumns } from '../data/CandleBuffer';
 
@@ -55,6 +56,21 @@ export interface IndicatorResult<TState = unknown> {
 }
 
 /**
+ * Chart-level inputs shared by every indicator of a chart (not part of
+ * any indicator's config). A change recalculates the indicators whose
+ * meta sets `usesContext`.
+ */
+export interface IndicatorContext {
+  /** Chart time zone (`axes.timeZone`): session boundaries (VWAP). */
+  readonly timeZone: ChartTimeZone;
+}
+
+/** Context used when none is supplied (UTC sessions). */
+export const DEFAULT_INDICATOR_CONTEXT: IndicatorContext = Object.freeze({
+  timeZone: 'utc',
+});
+
+/**
  * Indicator algorithm (spec §13.1, adapted to columnar input). One stateless
  * implementation per `type`; instances are described by
  * `IndicatorDefinition` and their results live in the indicator cache.
@@ -63,7 +79,11 @@ export interface Indicator<TConfig, TResult = IndicatorResult> {
   readonly type: string;
 
   /** Full calculation over all bars of `input` (history load, spec §15.1). */
-  calculate(input: CandleColumns, config: TConfig): TResult;
+  calculate(
+    input: CandleColumns,
+    config: TConfig,
+    context?: IndicatorContext
+  ): TResult;
 
   /**
    * Incremental update after bars from `changedIndex` on changed or were
@@ -75,7 +95,8 @@ export interface Indicator<TConfig, TResult = IndicatorResult> {
     previous: TResult,
     input: CandleColumns,
     changedIndex: number,
-    config: TConfig
+    config: TConfig,
+    context?: IndicatorContext
   ): TResult;
 
   /**

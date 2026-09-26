@@ -16,9 +16,30 @@ import {
 /** Paint-resolved overlay spec, captured by the indicator / legend mappers. */
 export interface IndicatorDrawItem {
   id: string;
-  fills: { upper: number; lower: number; paint: SkPaint }[];
-  strokes: { output: number; paint: SkPaint }[];
+  fills: {
+    upper: number;
+    lower: number;
+    /** Display shift in bars. */
+    offset: number;
+    paint: SkPaint;
+    /** Cloud: paint where `lower` is above `upper` (`null`: plain band). */
+    downPaint: SkPaint | null;
+  }[];
+  strokes: {
+    output: number;
+    offset: number;
+    /** Dot radius for points series, `0` for a polyline. */
+    radius: number;
+    paint: SkPaint;
+  }[];
 }
+
+/** Dot radius of a points series of line width `width`. */
+export function dotRadius(width: number): number {
+  return Math.max(MIN_DOT_RADIUS, width);
+}
+
+const MIN_DOT_RADIUS = 1.5;
 
 export interface IndicatorDrawList {
   items: IndicatorDrawItem[];
@@ -65,11 +86,19 @@ export function createIndicatorDrawList(
       fills: spec.fills.map((f) => ({
         upper: f.upper,
         lower: f.lower,
+        offset: f.offset,
         paint: colorPaint(f.color, f.opacity),
+        downPaint:
+          f.downColor === undefined ? null : colorPaint(f.downColor, f.opacity),
       })),
       strokes: spec.strokes.map((s) => ({
         output: s.output,
-        paint: strokePaint(s.color, s.width, s.opacity),
+        offset: s.offset,
+        radius: s.dots ? dotRadius(s.width) : 0,
+        // Dots are filled circles; lines are stroked polylines.
+        paint: s.dots
+          ? colorPaint(s.color, s.opacity)
+          : strokePaint(s.color, s.width, s.opacity),
       })),
     });
     legend.push({
@@ -81,6 +110,7 @@ export function createIndicatorDrawList(
         legendPaints.push(colorPaint(v.color, 1));
         return {
           output: v.output,
+          offset: v.offset,
           style: INDICATOR_LEGEND_STYLE_VALUE + legendPaints.length - 1,
         };
       }),

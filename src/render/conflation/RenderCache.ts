@@ -85,6 +85,11 @@ export interface FrameScratch {
   time: TimeScaleState;
   price: MutablePriceScale;
   range: VisibleRange;
+  /** Unclamped view edges (`getViewIndexRange`). */
+  view: VisibleRange;
+  /** Time scale / range of a shifted series (`IndicatorEntry.offsets`). */
+  shiftedTime: TimeScaleState;
+  shiftedRange: VisibleRange;
   metrics: CandleMetrics;
   /** Candle metrics at the conflated bucket width. */
   bucketMetrics: CandleMetrics;
@@ -106,6 +111,9 @@ export function createFrameScratch(): FrameScratch {
     time: { width: 0, barSpacing: 0, rightOffset: 0, barCount: 0 },
     price: { mode: 'linear', top: 0, height: 0, min: NaN, max: NaN },
     range: { startIndex: 0, endIndex: -1 },
+    view: { startIndex: 0, endIndex: -1 },
+    shiftedTime: { width: 0, barSpacing: 0, rightOffset: 0, barCount: 0 },
+    shiftedRange: { startIndex: 0, endIndex: -1 },
     metrics: createCandleMetrics(),
     bucketMetrics: createCandleMetrics(),
     rect: { x: 0, y: 0, width: 0, height: 0 },
@@ -232,7 +240,8 @@ export function cachedCandleRange(
 
 /**
  * `extendRangeWithOutputs` with the same pyramid switch as
- * `cachedCandleRange` (per aligned output).
+ * `cachedCandleRange` (per aligned output). Shifted refs cover the view
+ * edges `[left, right]` (default `[start, end]`).
  */
 export function cachedExtendRange(
   cache: RenderCache,
@@ -241,7 +250,9 @@ export function cachedExtendRange(
   refs: readonly UiOutputRef[],
   start: number,
   end: number,
-  out: PriceRange
+  out: PriceRange,
+  left: number = start,
+  right: number = end
 ): void {
   'worklet';
   const long = end - start + 1 >= PYRAMID_QUERY_MIN_BARS;
@@ -252,13 +263,16 @@ export function cachedExtendRange(
     if (!series || !column || !isSeriesAligned(series, data)) {
       continue;
     }
+    const offset = ref.offset ?? 0;
+    const from = offset === 0 ? start : left - offset;
+    const to = offset === 0 ? end : right - offset;
     const pyramid = long
       ? outputPyramid(cache, set, ref.id, series, ref.output)
       : undefined;
     if (pyramid === undefined) {
-      extendRangeWithColumn(column, series.length, start, end, out);
+      extendRangeWithColumn(column, series.length, from, to, out);
     } else {
-      pyramidRangeMinMax(pyramid, column, column, 0, start, end, out);
+      pyramidRangeMinMax(pyramid, column, column, 0, from, to, out);
     }
   }
 }

@@ -2,8 +2,8 @@
  * Minimal Jest stand-in for @shopify/react-native-skia, which needs a
  * native (or CanvasKit/WASM) backend. Components render as host elements
  * so tests can assert on the props passed to Skia. `Skia.PathBuilder`
- * returns a recording fake: `detach()` yields a `FakePath` with the rects
- * that were added. Extend as later phases use more of the Skia API.
+ * returns a recording fake: `detach()` yields a `FakePath` with the rects,
+ * path commands and circles that were added. Extend as later phases use more of the Skia API.
  */
 import { createElement, type ReactNode } from 'react';
 import { View, type ViewProps } from 'react-native';
@@ -19,20 +19,30 @@ export interface FakeRect {
 export type FakePathCommand =
   { cmd: 'M' | 'L'; x: number; y: number } | { cmd: 'Z' };
 
+/** Recorded `addCircle` call. */
+export interface FakeCircle {
+  x: number;
+  y: number;
+  r: number;
+}
+
 export class FakePath {
   constructor(
     readonly rects: readonly FakeRect[],
-    readonly commands: readonly FakePathCommand[] = []
+    readonly commands: readonly FakePathCommand[] = [],
+    readonly circles: readonly FakeCircle[] = []
   ) {}
 }
 
 export class FakePathBuilder {
   rects: FakeRect[] = [];
   commands: FakePathCommand[] = [];
+  circles: FakeCircle[] = [];
 
   reset(): this {
     this.rects = [];
     this.commands = [];
+    this.circles = [];
     return this;
   }
 
@@ -56,14 +66,20 @@ export class FakePathBuilder {
     return this;
   }
 
+  addCircle(x: number, y: number, r: number): this {
+    this.circles.push({ x, y, r });
+    return this;
+  }
+
   build(): FakePath {
-    return new FakePath([...this.rects], [...this.commands]);
+    return new FakePath([...this.rects], [...this.commands], [...this.circles]);
   }
 
   detach(): FakePath {
-    const path = new FakePath(this.rects, this.commands);
+    const path = new FakePath(this.rects, this.commands, this.circles);
     this.rects = [];
     this.commands = [];
+    this.circles = [];
     return path;
   }
 }

@@ -72,3 +72,30 @@ export function getVisibleRange(
   }
   return out;
 }
+
+/**
+ * Logical bar indices at the plot edges (no overscan, **not** clamped to
+ * the stored bars): `endIndex` may exceed `barCount − 1` when the view
+ * shows the empty area right of the last bar, which shifted series
+ * (Ichimoku leading spans) draw into. Empty for a non-finite state.
+ */
+export function getViewIndexRange(
+  state: TimeScaleState,
+  out: VisibleRange = { startIndex: 0, endIndex: -1 }
+): VisibleRange {
+  'worklet';
+  const right = rightEdgeIndex(state);
+  const left = right - visibleBarCount(state);
+  if (
+    !Number.isFinite(left) ||
+    !Number.isFinite(right) ||
+    !(state.barSpacing > 0)
+  ) {
+    out.startIndex = 0;
+    out.endIndex = -1;
+    return out;
+  }
+  out.startIndex = Math.floor(left + 0.5);
+  out.endIndex = Math.ceil(right + 0.5) - 1;
+  return out;
+}

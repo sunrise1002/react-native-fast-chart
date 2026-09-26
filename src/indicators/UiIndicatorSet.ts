@@ -192,6 +192,12 @@ export function isSeriesAligned(
 export interface UiOutputRef {
   id: string;
   output: number;
+  /**
+   * Display shift in bars (default 0): value `i` is drawn at bar
+   * `i + offset`, so the view `[a, b]` covers values `[a − offset,
+   * b − offset]`.
+   */
+  offset?: number;
 }
 
 /**
@@ -225,8 +231,10 @@ export function extendRangeWithColumn(
 
 /**
  * Widens `out` (a valid min/max) by the finite values of the referenced
- * aligned outputs over bars `[start, end]` (inclusive). Worklet,
- * allocation-free.
+ * aligned outputs over bars `[start, end]` (inclusive). Shifted refs
+ * (`offset ≠ 0`) cover the values drawn between the unclamped view edges
+ * `[left, right]` (default `[start, end]`, see `getViewIndexRange`).
+ * Worklet, allocation-free.
  */
 export function extendRangeWithOutputs(
   set: UiIndicatorSet,
@@ -234,7 +242,9 @@ export function extendRangeWithOutputs(
   refs: readonly UiOutputRef[],
   start: number,
   end: number,
-  out: { min: number; max: number }
+  out: { min: number; max: number },
+  left: number = start,
+  right: number = end
 ): void {
   'worklet';
   for (let r = 0; r < refs.length; r++) {
@@ -244,6 +254,13 @@ export function extendRangeWithOutputs(
     if (!series || !column || !isSeriesAligned(series, candles)) {
       continue;
     }
-    extendRangeWithColumn(column, series.length, start, end, out);
+    const offset = ref.offset ?? 0;
+    extendRangeWithColumn(
+      column,
+      series.length,
+      offset === 0 ? start : left - offset,
+      offset === 0 ? end : right - offset,
+      out
+    );
   }
 }

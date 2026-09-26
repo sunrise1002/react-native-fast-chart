@@ -296,9 +296,9 @@ describe('resolvePaneSpecs', () => {
     );
     // Then
     expect(spec?.refs).toEqual([
-      { id: 'macd', output: 2 },
-      { id: 'macd', output: 0 },
-      { id: 'macd', output: 1 },
+      { id: 'macd', output: 2, offset: 0 },
+      { id: 'macd', output: 0, offset: 0 },
+      { id: 'macd', output: 1, offset: 0 },
     ]);
   });
 });

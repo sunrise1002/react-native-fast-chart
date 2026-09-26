@@ -18,11 +18,20 @@ import type { TextSink } from '../RenderModel';
 export const INDICATOR_LEGEND_STYLE_CAPTION = 0;
 export const INDICATOR_LEGEND_STYLE_VALUE = 1;
 
+export interface IndicatorLegendValue {
+  output: number;
+  style: number;
+  offset?: number;
+}
+
 export interface IndicatorLegendItem {
   id: string;
   label: string;
-  /** Output column + text style of each value. */
-  values: readonly { output: number; style: number }[];
+  /**
+   * Output column + text style of each value; `offset` (display shift in
+   * bars, default 0) shows value `index − offset` at bar `index`.
+   */
+  values: readonly IndicatorLegendValue[];
   /** Fixed decimals; `-1` / omitted uses the layout decimals. */
   decimals?: number;
   /** Compact K / M / B notation (volume). */
@@ -96,13 +105,14 @@ export function layoutIndicatorLegend(
       index < series.length &&
       index % 1 === 0;
     for (let k = 0; valid && k < item.values.length; k++) {
-      const spec = item.values[k] as { output: number; style: number };
+      const spec = item.values[k] as IndicatorLegendValue;
       const column = series.outputs[spec.output];
+      const at = index - (spec.offset ?? 0);
       const text =
-        column === undefined
+        column === undefined || at < 0 || at >= series.length
           ? ''
           : formatIndicatorValue(
-              column[index] as number,
+              column[at] as number,
               item.decimals ?? -1,
               item.compact === true,
               layout.decimals,

@@ -1,5 +1,5 @@
 import type { CandleColumns } from '../data/CandleBuffer';
-import type { IndicatorResult } from './Indicator';
+import type { IndicatorContext, IndicatorResult } from './Indicator';
 import type { IndicatorCache } from './IndicatorCache';
 import type { IndicatorModule } from './IndicatorRegistry';
 import type { PendingIndicatorWork } from './IndicatorScheduler';
@@ -26,6 +26,8 @@ export interface IndicatorDataset {
   readonly resetVersion: number;
   /** Time of bar 0 (`NaN` when empty). */
   readonly firstTime: number;
+  /** Chart-level indicator inputs (time zone). */
+  readonly context?: IndicatorContext;
 }
 
 /** One active indicator to bring up to date. */
@@ -61,7 +63,7 @@ export interface IndicatorBackend {
  */
 export const synchronousIndicatorBackend: IndicatorBackend = {
   compute(dataset, tasks, work, cache, updates) {
-    const { columns, version, resetVersion, firstTime } = dataset;
+    const { columns, version, resetVersion, firstTime, context } = dataset;
     let failure: unknown;
     for (const task of tasks) {
       const { id } = task;
@@ -81,12 +83,13 @@ export const synchronousIndicatorBackend: IndicatorBackend = {
       try {
         const result =
           full || !indicator.update
-            ? indicator.calculate(columns, task.config)
+            ? indicator.calculate(columns, task.config, context)
             : indicator.update(
                 cached.result,
                 columns,
                 work.fromIndex,
-                task.config
+                task.config,
+                context
               );
         task.dirty = false;
         cache.set({

@@ -86,8 +86,9 @@ export function parseParamValue(
   param: IndicatorParam,
   input: string | number
 ): ParsedParamValue {
-  if (param.kind === 'source') {
-    const match = param.options.find((o) => o === input);
+  if (param.kind === 'source' || param.kind === 'choice') {
+    const options: readonly string[] = param.options;
+    const match = options.find((o) => o === input);
     return match !== undefined
       ? { value: match, valid: true, adjusted: false }
       : { value: param.default, valid: false, adjusted: false };

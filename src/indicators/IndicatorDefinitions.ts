@@ -22,6 +22,11 @@ export interface IndicatorEntry {
   readonly label: string;
   /** Guide levels for the resolved config (pane indicators). */
   readonly guides?: IndicatorGuides;
+  /**
+   * Display shift per output column in bars (`IndicatorModule.
+   * outputOffsets`); omitted when no output is shifted.
+   */
+  readonly offsets?: readonly number[];
 }
 
 export const DEFAULT_INDICATOR_STYLE: Readonly<IndicatorStyle> = Object.freeze({
@@ -88,14 +93,17 @@ export function createIndicatorEntry(
   );
   const config = module.resolveConfig(definition.config);
   const label = module.formatLabel(config);
-  const entry: IndicatorEntry = module.guides
-    ? {
-        id,
-        definition,
-        meta: module.meta,
-        label,
-        guides: module.guides(config),
-      }
-    : { id, definition, meta: module.meta, label };
+  const entry: {
+    -readonly [K in keyof IndicatorEntry]: IndicatorEntry[K];
+  } = { id, definition, meta: module.meta, label };
+  if (module.guides) {
+    entry.guides = module.guides(config);
+  }
+  const offsets = module.outputOffsets?.(config);
+  if (offsets?.some((o) => o !== 0)) {
+    entry.offsets = offsets.map((o) =>
+      Number.isFinite(o) ? Math.round(o) : 0
+    );
+  }
   return { entry, config };
 }

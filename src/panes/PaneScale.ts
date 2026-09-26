@@ -74,7 +74,8 @@ export function paneRangeFromValues(
  * - `'zeroCentered'`: visible min / max, always including 0 (MACD), padded;
  * - `'auto'` / `'price'`: visible min / max, padded.
  *
- * Values come from the aligned, finite outputs of `refs`. Returns `false`
+ * Values come from the aligned, finite outputs of `refs` (shifted refs
+ * over the unclamped view edges `[left, right]`). Returns `false`
  * (and leaves `out` NaN) when nothing is drawable — except `'fixed'`,
  * which is always valid for a valid spec.
  */
@@ -85,12 +86,14 @@ export function computePaneRange(
   refs: readonly UiOutputRef[],
   start: number,
   end: number,
-  out: PriceRange
+  out: PriceRange,
+  left: number = start,
+  right: number = end
 ): boolean {
   'worklet';
   const range = { min: Infinity, max: -Infinity };
   if (scale.kind !== 'fixed') {
-    extendRangeWithOutputs(set, candles, refs, start, end, range);
+    extendRangeWithOutputs(set, candles, refs, start, end, range, left, right);
   }
   return paneRangeFromValues(scale, range, out);
 }

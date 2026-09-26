@@ -11,7 +11,7 @@
  * | TR5  | scrolled to the left edge with onLoadMore (pending)    | Equivalence        | one call, loading slot shown                   |
  * | TR6  | page resolves                                          | Equivalence        | bars prepended, slot hidden                    |
  * | TR7  | handler returns [] (no more history)                   | Boundary (empty)   | exhausted, no further calls                    |
- * | TR8  | handler rejects                                        | Exception          | error state, slot hidden                       |
+ * | TR8  | handler throws                                         | Exception          | error state, slot hidden                       |
  * | TR9  | no onLoadMore, at the left edge                        | Boundary (NULL)    | no request                                     |
  * | TR10 | far from the left edge                                 | Boundary           | no request                                     |
  * | TR11 | loading without historyLoadingIndicator                | Boundary (NULL)    | no slot rendered                               |
@@ -195,11 +195,11 @@ describe('history pagination', () => {
     expect(handle.getHistoryState()).toBe('exhausted');
   });
 
-  it('TR8: a rejected page ends in the error state', async () => {
+  it('TR8: a failing handler ends in the error state', async () => {
     // Given
-    const onLoadMore = jest.fn<LoadMoreHandler>(() =>
-      Promise.reject(new Error('503'))
-    );
+    const onLoadMore = jest.fn<LoadMoreHandler>(() => {
+      throw new Error('503');
+    });
     const { view, handle, scrollTo } = await mounted({
       candles: CANDLES.slice(900),
       onLoadMore,
@@ -207,7 +207,6 @@ describe('history pagination', () => {
     });
     // When
     scrollTo(leftEdgeOffset(handle));
-    await flushPromises();
     // Then
     expect(handle.getHistoryState()).toBe('error');
     expect((handle.history.getError() as Error).message).toBe('503');

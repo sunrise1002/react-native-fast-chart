@@ -71,10 +71,22 @@ describe('IndicatorRegistry', () => {
       'ema',
       'wma',
       'bollinger',
+      'vwap',
+      'donchian',
+      'keltner',
+      'supertrend',
+      'ichimoku',
+      'parabolicSar',
       'volume',
       'rsi',
       'macd',
       'atr',
+      'stochastic',
+      'stochRsi',
+      'obv',
+      'mfi',
+      'cci',
+      'adx',
     ]);
   });
 

@@ -194,6 +194,35 @@ export interface UiOutputRef {
 }
 
 /**
+ * Widens `out` (a valid min/max) by the finite values of `column` over
+ * bars `[start, end]` (inclusive, clamped to `[0, length)`). Worklet,
+ * allocation-free.
+ */
+export function extendRangeWithColumn(
+  column: ArrayLike<number>,
+  length: number,
+  start: number,
+  end: number,
+  out: { min: number; max: number }
+): void {
+  'worklet';
+  const from = start > 0 ? Math.ceil(start) : 0;
+  const to = end < length - 1 ? Math.floor(end) : length - 1;
+  for (let i = from; i <= to; i++) {
+    const v = column[i] as number;
+    if (v - v !== 0) {
+      continue;
+    }
+    if (v < out.min) {
+      out.min = v;
+    }
+    if (v > out.max) {
+      out.max = v;
+    }
+  }
+}
+
+/**
  * Widens `out` (a valid min/max) by the finite values of the referenced
  * aligned outputs over bars `[start, end]` (inclusive). Worklet,
  * allocation-free.
@@ -214,19 +243,6 @@ export function extendRangeWithOutputs(
     if (!series || !column || !isSeriesAligned(series, candles)) {
       continue;
     }
-    const from = start > 0 ? Math.ceil(start) : 0;
-    const to = end < series.length - 1 ? Math.floor(end) : series.length - 1;
-    for (let i = from; i <= to; i++) {
-      const v = column[i] as number;
-      if (v - v !== 0) {
-        continue;
-      }
-      if (v < out.min) {
-        out.min = v;
-      }
-      if (v > out.max) {
-        out.max = v;
-      }
-    }
+    extendRangeWithColumn(column, series.length, start, end, out);
   }
 }

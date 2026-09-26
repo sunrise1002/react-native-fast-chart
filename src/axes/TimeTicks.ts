@@ -7,13 +7,22 @@ import {
   MS_PER_SECOND,
 } from './CivilTime';
 import { thinTicksBySpacing, type WeightedTicks } from './LabelCollision';
+import { generateSparseTimeTicks } from './SparseTimeTicks';
 import {
-  TICK_WEIGHT_DAY,
-  TICK_WEIGHT_MONTH,
-  TICK_WEIGHT_TIME,
-  TICK_WEIGHT_YEAR,
-} from './TimeFormat';
+  isIntervalTick,
+  tickWeight,
+  TIME_UNIT_DAY,
+  TIME_UNIT_MONTH,
+  TIME_UNIT_MS,
+} from './TimeTickRules';
 import { offsetAt, type OffsetResolver } from './TimeZone';
+
+export {
+  TIME_UNIT_DAY,
+  TIME_UNIT_MONTH,
+  TIME_UNIT_MS,
+  TIME_UNIT_YEAR,
+} from './TimeTickRules';
 
 /**
  * Time tick generator (spec §19.1, Phase 5.3).
@@ -29,13 +38,19 @@ import { offsetAt, type OffsetResolver } from './TimeZone';
  *    month > day > time) which selects its label format and wins
  *    collisions (`thinTicksBySpacing`).
  *
+ *    When labels are many bars apart (extreme zoom-out), the bars
+ *    between candidate boundaries are skipped by binary search
+ *    (`SparseTimeTicks`): O(ticks · log n) instead of O(visible bars),
+ *    with identical output.
+ *
  * Pure, worklet-compatible, allocation-free.
  */
 
-export const TIME_UNIT_MS = 0;
-export const TIME_UNIT_DAY = 1;
-export const TIME_UNIT_MONTH = 2;
-export const TIME_UNIT_YEAR = 3;
+/**
+ * Minimum label distance in bars from which the sparse generator is used
+ * (each skipped run must be long enough to beat a binary search).
+ */
+export const SPARSE_TICKS_MIN_BARS = 16;
 
 const H = 60 * MS_PER_MINUTE;
 
@@ -210,6 +225,18 @@ export function generateTimeTicks(
     return 0;
   }
   const capacity = out.positions.length;
+  if (minBars >= SPARSE_TICKS_MIN_BARS) {
+    out.count = generateSparseTimeTicks(
+      bars,
+      first,
+      last,
+      unit,
+      n,
+      resolver,
+      out
+    );
+    return thinTicksBySpacing(out, minBars);
+  }
   const date = createCivilDate();
   let t = times[offset + first - 1] as number;
   let local = t + offsetAt(resolver, t);
@@ -226,31 +253,17 @@ export function generateTimeTicks(
     if (days !== prevDays) {
       civilFromDays(days, date);
     }
-    const weight =
-      date.year !== prevYear
-        ? TICK_WEIGHT_YEAR
-        : date.month !== prevMonth
-          ? TICK_WEIGHT_MONTH
-          : days !== prevDays
-            ? TICK_WEIGHT_DAY
-            : TICK_WEIGHT_TIME;
-    let tick: boolean;
+    const weight = tickWeight(date, days, prevYear, prevMonth, prevDays);
+    let bucketChanged = false;
     if (unit === TIME_UNIT_MS) {
       const bucket = Math.floor(local / n);
-      tick = bucket !== prevBucket;
+      bucketChanged = bucket !== prevBucket;
       prevBucket = bucket;
-    } else if (unit === TIME_UNIT_DAY) {
-      tick =
-        weight >= TICK_WEIGHT_MONTH ||
-        (weight === TICK_WEIGHT_DAY && (date.day - 1) % n === 0);
-    } else if (unit === TIME_UNIT_MONTH) {
-      tick =
-        weight === TICK_WEIGHT_YEAR ||
-        (weight === TICK_WEIGHT_MONTH && (date.month - 1) % n === 0);
-    } else {
-      tick = weight === TICK_WEIGHT_YEAR && date.year % n === 0;
     }
-    if (tick && Number.isFinite(local)) {
+    if (
+      isIntervalTick(unit, n, weight, date, bucketChanged) &&
+      Number.isFinite(local)
+    ) {
       out.positions[count] = i;
       out.weights[count] = weight;
       out.payload[count] = local;

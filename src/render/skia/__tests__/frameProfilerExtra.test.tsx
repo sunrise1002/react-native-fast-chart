@@ -22,6 +22,7 @@ beforeEach(() => {
 const STYLE: CandleStyle = {
   bodyRatio: 0.8,
   wickWidth: 1,
+  conflationPx: 2,
   pixelRatio: 2,
   profiling: false,
 };

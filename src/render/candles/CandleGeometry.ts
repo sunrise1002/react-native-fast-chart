@@ -45,6 +45,7 @@ export interface CandleMetrics {
 export const MIN_BODY_OVER_WICK_PX = 2;
 
 export function createCandleMetrics(): CandleMetrics {
+  'worklet';
   return { wickOnly: false, bodyWidthPx: 1, wickWidthPx: 1, pixelRatio: 1 };
 }
 

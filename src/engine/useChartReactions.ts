@@ -5,16 +5,14 @@ import {
 } from 'react-native-reanimated';
 import type { PriceRange } from '../core/ChartTypes';
 import { frameTimeScale } from '../render/skia/frameScales';
+import { cachedAutoScaleTarget } from '../render/conflation/ConflatedLayers';
+import { pruneOutputPyramids } from '../render/conflation/RenderCache';
 import {
-  computeAutoScaleTarget,
   priceRangeChanged,
   shouldSnapPriceRange,
 } from '../viewport/AutoScaleTarget';
 import { isLastBarVisible } from '../viewport/TimeScale';
-import {
-  extendRangeWithOutputs,
-  type UiOutputRef,
-} from '../indicators/UiIndicatorSet';
+import type { UiOutputRef } from '../indicators/UiIndicatorSet';
 import type { ChartSharedState } from './ChartSharedState';
 
 const NO_REFS: readonly UiOutputRef[] = [];
@@ -40,37 +38,34 @@ export function useChartReactions(
   overlayRefs: readonly UiOutputRef[] = NO_REFS
 ): void {
   const { series, barSpacing, rightOffset, plotWidth, indicators } = state;
-  const { priceMin, priceMax, isAtRealtime } = state;
+  const { priceMin, priceMax, isAtRealtime, renderCache } = state;
 
   // Auto Y-scale: follow the visible bars' range (widened by the overlay
   // indicator values, like TradingView). Retargeting a short
   // ease-out timing every frame acts as a low-pass filter, so bars entering
-  // or leaving the view don't make the scale jitter.
+  // or leaving the view don't make the scale jitter. Long visible ranges
+  // (extreme zoom-out) are answered by the render cache's min/max pyramids
+  // in O(log n) instead of a scan of every visible bar.
   useAnimatedReaction(
     (): AutoScaleInput => {
       const data = series.value;
       const set = indicators.value;
+      const cache = renderCache.value;
+      pruneOutputPyramids(cache, set);
       const out = { min: NaN, max: NaN, valid: false, resetVersion: 0 };
-      out.valid = computeAutoScaleTarget(
+      out.valid = cachedAutoScaleTarget(
+        cache,
         data,
-        frameTimeScale(plotWidth, barSpacing, rightOffset, data.length),
-        out,
-        {},
-        undefined,
-        overlayRefs.length > 0
-          ? {
-              extend(start, end, range) {
-                extendRangeWithOutputs(
-                  set,
-                  data,
-                  overlayRefs,
-                  start,
-                  end,
-                  range
-                );
-              },
-            }
-          : undefined
+        set,
+        overlayRefs,
+        frameTimeScale(
+          plotWidth,
+          barSpacing,
+          rightOffset,
+          data.length,
+          cache.frame.time
+        ),
+        out
       );
       out.resetVersion = data.resetVersion;
       return out;

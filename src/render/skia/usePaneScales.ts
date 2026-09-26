@@ -1,7 +1,7 @@
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
 import type { PaneLayoutFrame } from '../../panes/PaneLayout';
-import { computePaneRange } from '../../panes/PaneScale';
+import { cachedPaneRange } from '../conflation/ConflatedLayers';
 import type { PriceScaleSnapshot } from '../../viewport/PriceScale';
 import { getVisibleRange } from '../../viewport/VisibleRange';
 import { frameTimeScale } from './frameScales';
@@ -45,7 +45,8 @@ export function paneItemRect(
 /**
  * Recomputes the pane scales on the UI thread whenever the viewport, the
  * layout, the data or the indicator values change. Ranges are not
- * animated (unlike the price pane).
+ * animated (unlike the price pane). Long visible ranges are answered by
+ * the render cache's pyramids (O(log n) per output).
  */
 export function usePaneScales(
   state: ChartSharedState,
@@ -53,20 +54,23 @@ export function usePaneScales(
   overlayRatio: number
 ): SharedValue<PaneScaleFrame> {
   const { series, indicators, barSpacing, rightOffset, plotWidth } = state;
-  const { paneLayout } = state;
+  const { paneLayout, renderCache } = state;
   return useDerivedValue<PaneScaleFrame>(() => {
     const data = series.value;
     const set = indicators.value;
     const layout = paneLayout.value;
+    const cache = renderCache.value;
+    const scratch = cache.frame;
     const time = frameTimeScale(
       plotWidth,
       barSpacing,
       rightOffset,
-      data.length
+      data.length,
+      scratch.time
     );
-    const range = getVisibleRange(time, 0);
+    const range = getVisibleRange(time, 0, scratch.range);
     const scales: PriceScaleSnapshot[] = [];
-    const out = { min: NaN, max: NaN };
+    const out = scratch.price;
     for (let i = 0; i < items.length; i++) {
       const item = items[i] as PaneDrawItem;
       const rect = { top: 0, height: 0 };
@@ -75,7 +79,8 @@ export function usePaneScales(
       out.max = NaN;
       if (data.length > 0) {
         // Leaves `out` NaN when nothing is drawable.
-        computePaneRange(
+        cachedPaneRange(
+          cache,
           item.scale,
           set,
           data,

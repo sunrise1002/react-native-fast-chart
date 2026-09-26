@@ -11,6 +11,9 @@
  * | H3   | narrow bars (spacing 1)                        | Equivalence        | wick-only: body paths empty               |
  * | H4   | no data / NaN price range / zero-height plot   | Boundary / invalid | 0 bars, all paths empty                   |
  * | H5   | profiling on / off                             | Equivalence        | buildMs finite / NaN                      |
+ * | H6   | spacing 0.01 dp (1000 bars in view)            | Equivalence        | conflated: group 128, 8 buckets           |
+ * | H7   | spacing 0.01 dp, conflationPx 0 (disabled)     | Boundary           | group 1, every bar drawn                  |
+ * | H8   | slot exactly 2 px (spacing 1, pr 2)            | Boundary           | not conflated (group 1)                   |
  * | F1   | flushFrameSamples pairs                        | Equivalence        | frames marked, finite builds recorded     |
  * | F2   | odd trailing value / empty / disabled metrics  | Boundary           | ignored / no-op                           |
  * | F3   | useFrameProfiler enabled / disabled            | Equivalence        | frames flushed in batches / none          |
@@ -36,6 +39,7 @@ beforeEach(() => {
 const STYLE: CandleStyle = {
   bodyRatio: 0.8,
   wickWidth: 1,
+  conflationPx: 2,
   pixelRatio: 2,
   profiling: false,
 };
@@ -144,6 +148,48 @@ describe('useCandlePaths', () => {
     const f = result.current.frame.value;
     expect(Number.isFinite(f.buildMs)).toBe(finite);
     expect(Number.isFinite(f.builtAt)).toBe(finite);
+  });
+});
+
+describe('useCandlePaths conflation', () => {
+  it('H6: conflates bars narrower than the bucket width', () => {
+    // Given: 0.02 px slots → groups of 128 bars (2.56 px)
+    const { state } = engine();
+    state.barSpacing.value = 0.01;
+    // When
+    const { result } = renderHook(() => useCandlePaths(state, STYLE));
+    tick();
+    // Then
+    const r = result.current;
+    expect(r.frame.value.group).toBe(128);
+    expect(r.frame.value.bars).toBe(8);
+    expect(rects(r.bullWicks) + rects(r.bearWicks)).toBe(8);
+  });
+
+  it('H7: draws every bar when conflation is disabled', () => {
+    // Given
+    const { state } = engine();
+    state.barSpacing.value = 0.01;
+    // When
+    const { result } = renderHook(() =>
+      useCandlePaths(state, { ...STYLE, conflationPx: 0 })
+    );
+    tick();
+    // Then
+    expect(result.current.frame.value.group).toBe(1);
+    expect(result.current.frame.value.bars).toBe(1000);
+  });
+
+  it('H8: keeps single bars at exactly the bucket width', () => {
+    // Given: 1 dp × pr 2 = 2 px = conflationPx
+    const { state } = engine();
+    state.barSpacing.value = 1;
+    // When
+    const { result } = renderHook(() => useCandlePaths(state, STYLE));
+    tick();
+    // Then
+    expect(result.current.frame.value.group).toBe(1);
+    expect(result.current.frame.value.bars).toBe(401);
   });
 });
 

@@ -17,6 +17,7 @@
  * | PL4  | results not aligned                                    | Abnormal          | clip + guides only, no histogram                   |
  * | PL5  | unknown histogram output                               | Invalid           | no histogram path                                  |
  * | PL6  | non-finite guide level / band bound                    | Invalid           | skipped (valid guides still drawn)                 |
+ * | PL7  | spacing 0.05 dp at pr 2 (group 32 → 32 buckets)        | Equivalence       | ≤ 1 histogram rect per bucket (volume, MACD)       |
  * | AX1  | pane axes                                              | Normal            | RSI at guide levels, MACD ticks, widest counts     |
  * | AX2  | no scale frame / invalid scale / overlay only          | Abnormal          | no pane labels                                     |
  * | AX3  | guide labels with chart decimals (-1)                  | Boundary          | integer labels                                     |
@@ -89,6 +90,7 @@ function layers(e: Engine, items: readonly PaneDrawItem[]) {
       paints: PAINTS,
       bodyRatio: 0.7,
       wickWidth: 1,
+      conflationPx: 2,
       pixelRatio: 2,
     });
     return { scales, frame };
@@ -203,6 +205,27 @@ describe('usePaneLayer', () => {
     expect(opsOf(ops, 'line').length).toBeGreaterThanOrEqual(3);
     // RSI line, MACD histogram buckets + MACD / signal lines.
     expect(opsOf(ops, 'path').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('PL7: conflated histograms draw one bar per bucket', () => {
+    // Given: 1000 bars at 0.05 dp (0.1 px slots → groups of 32)
+    const { e, items } = setup();
+    e.state.barSpacing.value = 0.05;
+    // When
+    const { result } = layers(e, items);
+    // Then
+    const { underlay, panes } = result.current.frame.value;
+    const rectsOf = (ops: readonly FakeDrawOp[]) =>
+      opsOf(ops, 'path').reduce(
+        (n, o) => n + (o.op === 'path' ? o.path.rects.length : 0),
+        0
+      );
+    const volume = rectsOf(pic({ value: underlay }).ops);
+    const macd = rectsOf(pic({ value: panes }).ops);
+    expect(volume).toBeGreaterThan(16);
+    expect(volume).toBeLessThanOrEqual(32);
+    expect(macd).toBeGreaterThan(16);
+    expect(macd).toBeLessThanOrEqual(32);
   });
 
   it('PL2: empty pictures without items or data', () => {

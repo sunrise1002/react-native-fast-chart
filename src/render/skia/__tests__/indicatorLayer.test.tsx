@@ -15,6 +15,8 @@
  * | L3   | results not aligned (resetVersion differs) / missing   | Abnormal          | nothing drawn                                   |
  * | L4   | all-NaN outputs (period > bars) / unknown output index | Boundary          | nothing drawn                                   |
  * | L5   | profiling on / off                                     | Equivalence       | finite buildMs / NaN                            |
+ * | L6   | spacing 0.05 dp, conflation on (group 64 → 16 buckets) | Equivalence       | envelopes: ≤ 2 points / bucket, fill kept       |
+ * | L7   | spacing 0.05 dp, conflation off                        | Boundary          | every bar: 1000-point polylines                 |
  * | G1   | legend rows under OHLC                                 | Normal            | label + value in series paint                   |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -26,6 +28,10 @@ import { connectIndicatorsToUi } from '../../../engine/IndicatorSync';
 import type { IndicatorInput } from '../../../indicators/Indicator';
 import { IndicatorEngine } from '../../../indicators/IndicatorEngine';
 import { defaultDarkTheme } from '../../../theme/defaultDarkTheme';
+import {
+  NO_CONFLATION,
+  type ConflationStyle,
+} from '../../conflation/ConflatedLayers';
 import { resolveOverlaySpecs } from '../../indicators/OverlayRenderSpec';
 import {
   createIndicatorDrawList,
@@ -74,10 +80,11 @@ function setup(inputs = INPUTS, bars = 1000) {
 function layer(
   e: ReturnType<typeof engine>,
   drawList: IndicatorDrawList,
-  profiling = false
+  profiling = false,
+  conflation: ConflationStyle = NO_CONFLATION
 ) {
   const hook = renderHook(() =>
-    useIndicatorLayer(e.state, drawList, profiling)
+    useIndicatorLayer(e.state, drawList, profiling, conflation)
   );
   tick();
   return hook;
@@ -208,6 +215,37 @@ describe('useIndicatorLayer', () => {
     );
     expect(Number.isNaN(result.current.frame.value.buildMs)).toBe(true);
   });
+
+  it.each([
+    [2, 32],
+    [0, 1000],
+  ])(
+    'L6/L7: conflationPx %p → ≤ %p points per line',
+    (conflationPx, maxPoints) => {
+      // Given: 0.05 dp bars (all 1000 in view)
+      const { e, drawList } = setup();
+      e.state.barSpacing.value = 0.05;
+      // When
+      const { result } = layer(e, drawList, false, {
+        conflationPx,
+        wickWidth: 1,
+        pixelRatio: 1,
+      });
+      // Then: 1 fill + 4 strokes, strokes bounded by the bucket count
+      const ops = paths(pic(result.current.picture));
+      expect(ops).toHaveLength(5);
+      const points = ops.map((o) =>
+        o.op === 'path'
+          ? o.path.commands.filter((c) => c.cmd !== 'Z').length
+          : 0
+      );
+      for (const n of points.slice(1)) {
+        expect(n).toBeGreaterThan(1);
+        expect(n).toBeLessThanOrEqual(maxPoints);
+      }
+      expect(Math.max(...points.slice(1))).toBeGreaterThan(maxPoints / 2);
+    }
+  );
 
   it('L2: empty draw list / no data', () => {
     // Given

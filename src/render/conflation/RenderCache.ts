@@ -15,6 +15,12 @@ import {
   type UiOutputRef,
 } from '../../indicators/UiIndicatorSet';
 import { candleRangeMinMax } from '../../viewport/AutoScale';
+import type { TimeScaleState } from '../../viewport/TimeScale';
+import type { VisibleRange } from '../../viewport/VisibleRange';
+import {
+  createCandleMetrics,
+  type CandleMetrics,
+} from '../candles/CandleGeometry';
 import {
   createConflatedCandles,
   createConflatedValues,
@@ -66,6 +72,44 @@ export interface RenderCache {
   lower: ConflatedValues;
   /** Scratch: min/max out-parameter. */
   extremes: PriceRange;
+  /**
+   * Per-frame scratch shared by the mappers (allocation audit, P8). A
+   * mapper fills and consumes it within one run; mappers never nest and
+   * never return these objects.
+   */
+  frame: FrameScratch;
+}
+
+/** Mutable per-frame objects reused instead of allocating each frame. */
+export interface FrameScratch {
+  time: TimeScaleState;
+  price: MutablePriceScale;
+  range: VisibleRange;
+  metrics: CandleMetrics;
+  /** Candle metrics at the conflated bucket width. */
+  bucketMetrics: CandleMetrics;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/** A `PriceScaleSnapshot` that can be refilled in place. */
+export interface MutablePriceScale {
+  mode: 'linear';
+  top: number;
+  height: number;
+  min: number;
+  max: number;
+}
+
+export function createFrameScratch(): FrameScratch {
+  'worklet';
+  return {
+    time: { width: 0, barSpacing: 0, rightOffset: 0, barCount: 0 },
+    price: { mode: 'linear', top: 0, height: 0, min: NaN, max: NaN },
+    range: { startIndex: 0, endIndex: -1 },
+    metrics: createCandleMetrics(),
+    bucketMetrics: createCandleMetrics(),
+    rect: { x: 0, y: 0, width: 0, height: 0 },
+  };
 }
 
 export function createRenderCache(): RenderCache {
@@ -79,6 +123,7 @@ export function createRenderCache(): RenderCache {
     values: createConflatedValues(),
     lower: createConflatedValues(),
     extremes: { min: NaN, max: NaN },
+    frame: createFrameScratch(),
   };
 }
 

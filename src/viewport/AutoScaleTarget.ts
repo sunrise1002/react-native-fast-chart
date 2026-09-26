@@ -13,6 +13,17 @@ export interface PriceRangeExtender {
   extend(start: number, end: number, out: PriceRange): void;
 }
 
+/** Applies the price-scale padding of `options` to a valid range in place. */
+export function padPriceRange(
+  out: PriceRange,
+  options: PriceScaleOptions = {}
+): void {
+  'worklet';
+  const scale = createPriceScale(out, 0, 1, options);
+  out.min = scale.min;
+  out.max = scale.max;
+}
+
 /**
  * Per-frame auto-scale target (spec §11.1): the padded low/high of the bars
  * actually on screen (no overscan, so bars scrolling in don't rescale
@@ -35,9 +46,7 @@ export function computeAutoScaleTarget(
   if (extender) {
     extender.extend(range.startIndex, range.endIndex, out);
   }
-  const scale = createPriceScale(out, 0, 1, options);
-  out.min = scale.min;
-  out.max = scale.max;
+  padPriceRange(out, options);
   return true;
 }
 

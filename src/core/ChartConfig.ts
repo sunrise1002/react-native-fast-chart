@@ -46,6 +46,12 @@ export interface ChartViewportConfig {
   leftMarginBars: number;
   /** Bars that always remain visible at either pan bound. */
   minVisibleBars: number;
+  /**
+   * Pixel-bucket conflation (spec §23.3): when bars get narrower than this
+   * many device px (or the wick width), groups of bars are drawn as one
+   * bucket — rendering only, data is untouched. `0` disables it.
+   */
+  conflationPx: number;
 }
 
 export interface ChartInteractionConfig {
@@ -152,6 +158,7 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     maxRightOffsetBars: 50,
     leftMarginBars: 10,
     minVisibleBars: 2,
+    conflationPx: 2,
   }),
   interaction: Object.freeze({
     panEnabled: true,

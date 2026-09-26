@@ -23,6 +23,50 @@ export const FIXED_SCALE_PADDING = 0.05;
 export const VOLUME_SCALE_HEADROOM = 0.1;
 
 /**
+ * The pane-range strategy of `computePaneRange` applied to the raw
+ * visible `values` min / max (`+∞` / `−∞` when empty; modified in place).
+ * Lets callers collect the values their own way (e.g. from a min/max
+ * pyramid at extreme zoom-out).
+ */
+export function paneRangeFromValues(
+  scale: IndicatorScaleSpec,
+  values: PriceRange,
+  out: PriceRange
+): boolean {
+  'worklet';
+  out.min = NaN;
+  out.max = NaN;
+  if (scale.kind === 'fixed') {
+    if (!(scale.max > scale.min) || !(scale.max - scale.min < Infinity)) {
+      return false;
+    }
+    const pad = (scale.max - scale.min) * FIXED_SCALE_PADDING;
+    out.min = scale.min - pad;
+    out.max = scale.max + pad;
+    return true;
+  }
+  const range = values;
+  if (!(range.max >= range.min)) {
+    return false;
+  }
+  if (scale.kind === 'volume') {
+    const top = range.max > 0 ? range.max : 1;
+    out.min = 0;
+    out.max = top * (1 + VOLUME_SCALE_HEADROOM);
+    return true;
+  }
+  if (scale.kind === 'zeroCentered') {
+    range.min = range.min < 0 ? range.min : 0;
+    range.max = range.max > 0 ? range.max : 0;
+  }
+  const normalized = normalizePriceRange(range.min, range.max);
+  const pad = (normalized.max - normalized.min) * PANE_SCALE_PADDING;
+  out.min = normalized.min - pad;
+  out.max = normalized.max + pad;
+  return true;
+}
+
+/**
  * Writes the displayed range of a pane into `out` for bars `[start, end]`:
  *
  * - `'fixed'`: `[min, max]` of the spec (RSI 0–100) with a small padding;
@@ -44,35 +88,9 @@ export function computePaneRange(
   out: PriceRange
 ): boolean {
   'worklet';
-  out.min = NaN;
-  out.max = NaN;
-  if (scale.kind === 'fixed') {
-    if (!(scale.max > scale.min) || !(scale.max - scale.min < Infinity)) {
-      return false;
-    }
-    const pad = (scale.max - scale.min) * FIXED_SCALE_PADDING;
-    out.min = scale.min - pad;
-    out.max = scale.max + pad;
-    return true;
-  }
   const range = { min: Infinity, max: -Infinity };
-  extendRangeWithOutputs(set, candles, refs, start, end, range);
-  if (!(range.max >= range.min)) {
-    return false;
+  if (scale.kind !== 'fixed') {
+    extendRangeWithOutputs(set, candles, refs, start, end, range);
   }
-  if (scale.kind === 'volume') {
-    const top = range.max > 0 ? range.max : 1;
-    out.min = 0;
-    out.max = top * (1 + VOLUME_SCALE_HEADROOM);
-    return true;
-  }
-  if (scale.kind === 'zeroCentered') {
-    range.min = range.min < 0 ? range.min : 0;
-    range.max = range.max > 0 ? range.max : 0;
-  }
-  const normalized = normalizePriceRange(range.min, range.max);
-  const pad = (normalized.max - normalized.min) * PANE_SCALE_PADDING;
-  out.min = normalized.min - pad;
-  out.max = normalized.max + pad;
-  return true;
+  return paneRangeFromValues(scale, range, out);
 }

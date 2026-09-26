@@ -14,6 +14,10 @@ import {
   DEFAULT_PRICE_PANE_RATIO,
 } from '../panes/Pane';
 import type { PaneLayoutFrame, PaneLayoutSpec } from '../panes/PaneLayout';
+import {
+  createRenderCache,
+  type RenderCache,
+} from '../render/conflation/RenderCache';
 import type { TimeScaleOptions, TimeScaleState } from '../viewport/TimeScale';
 
 /**
@@ -71,6 +75,12 @@ export interface ChartSharedState {
    * realtime ticks when `realtime.lastPricePulse` is on.
    */
   lastPricePulse: SharedValue<number>;
+  /**
+   * UI-thread render cache (min/max pyramids, conflation and frame
+   * scratch). Mutated in place by the mappers, never reassigned, so
+   * reading it does not re-run them (see `RenderCache`).
+   */
+  renderCache: SharedValue<RenderCache>;
 }
 
 /** Layout spec with only the price pane. */
@@ -96,6 +106,8 @@ export interface ViewportOptions extends TimeScaleOptions {
   followRealtime: boolean;
   /** Realtime: pulse duration, ms; `0` = pulse disabled. */
   pulseDurationMs: number;
+  /** Min bucket width before conflating, device px (`0` = off). */
+  conflationPx: number;
 }
 
 /** Rubber-band overshoot allowed while dragging, as a share of the plot. */
@@ -129,6 +141,7 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
       total: 0,
     }),
     lastPricePulse: makeMutable(1),
+    renderCache: makeMutable(createRenderCache()),
   };
 }
 
@@ -149,6 +162,7 @@ export function toViewportOptions(config: ChartConfig): ViewportOptions {
     pulseDurationMs: config.realtime.lastPricePulse
       ? Math.max(0, config.realtime.pulseDurationMs)
       : 0,
+    conflationPx: viewport.conflationPx,
   };
 }
 

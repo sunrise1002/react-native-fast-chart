@@ -7,6 +7,7 @@ import {
   Rect,
   Skia,
 } from '@shopify/react-native-skia';
+import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import { useDerivedValue } from 'react-native-reanimated';
 import { estimateBarInterval } from '../../axes/TimeTicks';
@@ -92,14 +93,24 @@ export function SkiaChartCanvas({
   const { timeAxisHeight } = layout;
 
   const barMs = useDerivedValue(() => estimateBarInterval(series.value));
+  const { wickWidth } = theme.candle;
+  const { conflationPx } = options;
+  const conflation = useMemo(
+    () => ({ conflationPx, wickWidth, pixelRatio }),
+    [conflationPx, wickWidth, pixelRatio]
+  );
   const candles = useCandlePaths(state, {
+    ...conflation,
     bodyRatio,
-    wickWidth: theme.candle.wickWidth,
-    pixelRatio,
     profiling,
   });
   const drawList = useIndicatorDrawList(overlaySpecs);
-  const indicatorLayer = useIndicatorLayer(state, drawList, profiling);
+  const indicatorLayer = useIndicatorLayer(
+    state,
+    drawList,
+    profiling,
+    conflation
+  );
   const paneItems = usePaneDrawList(paneSpecs);
   const paneScales = usePaneScales(
     state,
@@ -107,10 +118,9 @@ export function SkiaChartCanvas({
     layout.overlayScaleHeightRatio
   );
   const paneLayer = usePaneLayer(state, paneItems, paneScales, {
+    ...conflation,
     paints,
     bodyRatio,
-    wickWidth: theme.candle.wickWidth,
-    pixelRatio,
   });
   const underlay = useDerivedValue(() => paneLayer.value.underlay);
   const panePicture = useDerivedValue(() => paneLayer.value.panes);

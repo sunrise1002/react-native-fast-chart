@@ -7,36 +7,34 @@ import {
 } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
-import type { UiCandleSeries } from '../../data/UiCandleSeries';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
-import {
-  isSeriesAligned,
-  type UiIndicatorSet,
-} from '../../indicators/UiIndicatorSet';
+import { isSeriesAligned } from '../../indicators/UiIndicatorSet';
 import { priceToY, type PriceScaleSnapshot } from '../../viewport/PriceScale';
-import type { TimeScaleState } from '../../viewport/TimeScale';
-import {
-  getVisibleRange,
-  type VisibleRange,
-} from '../../viewport/VisibleRange';
+import { getVisibleRange } from '../../viewport/VisibleRange';
 import {
   computeCandleMetrics,
-  createCandleMetrics,
   type CandleMetrics,
 } from '../candles/CandleGeometry';
+import {
+  conflateOutput,
+  conflateVisibleCandles,
+  frameGroupSize,
+  type ConflationStyle,
+} from '../conflation/ConflatedLayers';
 import { buildHistogramGeometry } from '../indicators/HistogramGeometry';
 import { frameTimeScale } from './frameScales';
-import { recordIndicatorItems } from './indicatorDrawing';
+import {
+  recordIndicatorItems,
+  type IndicatorFrameContext,
+} from './indicatorDrawing';
 import type { PaneDrawItem } from './PanePaints';
 import type { ChartPaints } from './SkiaResources';
 import { RENDER_OVERSCAN_BARS } from './useCandlePaths';
 import type { PaneScaleFrame } from './usePaneScales';
 
-export interface PaneLayerStyle {
+export interface PaneLayerStyle extends ConflationStyle {
   paints: ChartPaints;
   bodyRatio: number;
-  wickWidth: number;
-  pixelRatio: number;
 }
 
 /** Pane pictures of one frame. */
@@ -54,22 +52,20 @@ interface Resources {
   builder: SkPathBuilder;
   buckets: SkPathBuilder[];
   used: boolean[];
-  metrics: CandleMetrics;
 }
 
 function recordHistograms(
   canvas: SkCanvas,
   res: Resources,
   item: PaneDrawItem,
-  set: UiIndicatorSet,
-  data: UiCandleSeries,
-  range: VisibleRange,
-  time: TimeScaleState,
+  ctx: IndicatorFrameContext,
+  metrics: CandleMetrics,
   price: PriceScaleSnapshot
 ): void {
   'worklet';
   const { buckets, used } = res;
-  const rect = { x: 0, y: 0, width: 0, height: 0 };
+  const { set, data, range, time, group, cache } = ctx;
+  const rect = cache.frame.rect;
   const sink = {
     bar(bucket: number, x: number, y: number, w: number, h: number) {
       rect.x = x;
@@ -95,18 +91,59 @@ function recordHistograms(
       (buckets[b] as SkPathBuilder).reset();
       used[b] = false;
     }
-    buildHistogramGeometry(
-      values,
-      ui.length,
-      range.startIndex,
-      range.endIndex,
-      time,
-      price,
-      res.metrics,
-      hist.mode,
-      data,
-      sink
-    );
+    if (group <= 1) {
+      buildHistogramGeometry(
+        values,
+        ui.length,
+        range.startIndex,
+        range.endIndex,
+        time,
+        price,
+        metrics,
+        hist.mode,
+        data,
+        sink
+      );
+    } else {
+      // Conflated: one bar per bucket at the group's peak value, colored
+      // from the conflated candles (`'candle'`) or the peaks.
+      const env = cache.values;
+      const n = conflateOutput(
+        cache,
+        set,
+        hist.id,
+        ui,
+        hist.output,
+        range.startIndex,
+        range.endIndex,
+        time,
+        group,
+        env
+      );
+      const candles =
+        hist.mode === 'candle'
+          ? conflateVisibleCandles(
+              cache,
+              data,
+              range.startIndex,
+              range.endIndex,
+              time,
+              group
+            )
+          : null;
+      buildHistogramGeometry(
+        env.peak,
+        n,
+        0,
+        n - 1,
+        env.scale,
+        price,
+        metrics,
+        hist.mode,
+        candles,
+        sink
+      );
+    }
     for (let b = 0; b < MAX_BUCKETS; b++) {
       const path = (buckets[b] as SkPathBuilder).detach();
       const paint = hist.paints[b];
@@ -167,7 +204,6 @@ export function usePaneLayer(
         Skia.PathBuilder.Make()
       ),
       used: new Array<boolean>(MAX_BUCKETS).fill(false),
-      metrics: createCandleMetrics(),
     };
     return {
       res,
@@ -177,7 +213,8 @@ export function usePaneLayer(
     };
   }, []);
   const { series, indicators, barSpacing, rightOffset, plotWidth } = state;
-  const { paints, bodyRatio, wickWidth, pixelRatio } = style;
+  const { renderCache } = state;
+  const { paints, bodyRatio, wickWidth, pixelRatio, conflationPx } = style;
 
   return useDerivedValue<PaneLayerFrame>(() => {
     const data = series.value;
@@ -186,21 +223,31 @@ export function usePaneLayer(
       return { underlay: resources.empty, panes: resources.empty };
     }
     const set = indicators.value;
+    const cache = renderCache.value;
+    const scratch = cache.frame;
     const time = frameTimeScale(
       plotWidth,
       barSpacing,
       rightOffset,
-      data.length
+      data.length,
+      scratch.time
     );
-    const range = getVisibleRange(time, RENDER_OVERSCAN_BARS);
-    const { res } = resources;
-    computeCandleMetrics(
+    const range = getVisibleRange(time, RENDER_OVERSCAN_BARS, scratch.range);
+    const group = frameGroupSize(
       time.barSpacing,
+      conflationPx,
+      wickWidth,
+      pixelRatio
+    );
+    const metrics = computeCandleMetrics(
+      time.barSpacing * group,
       bodyRatio,
       wickWidth,
       pixelRatio,
-      res.metrics
+      scratch.metrics
     );
+    const ctx: IndicatorFrameContext = { set, data, range, time, group, cache };
+    const { res } = resources;
     const record = (overlay: boolean): SkPicture => {
       const recorder = overlay ? resources.underlay : resources.panes;
       const canvas = recorder.beginRecording();
@@ -222,17 +269,8 @@ export function usePaneLayer(
           true
         );
         recordGuides(canvas, item, time.width, price, paints);
-        recordHistograms(canvas, res, item, set, data, range, time, price);
-        recordIndicatorItems(
-          canvas,
-          res.builder,
-          item.list.items,
-          set,
-          data,
-          range,
-          time,
-          price
-        );
+        recordHistograms(canvas, res, item, ctx, metrics, price);
+        recordIndicatorItems(canvas, res.builder, item.list.items, ctx, price);
         canvas.restore();
       }
       return recorder.finishRecordingAsPicture();

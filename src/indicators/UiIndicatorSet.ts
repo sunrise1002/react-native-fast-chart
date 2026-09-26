@@ -18,6 +18,7 @@ export interface UiIndicatorSeries {
   firstTime: number;
 }
 
+/** UI-thread copy of the active indicator results (read in worklets). */
 export interface UiIndicatorSet {
   series: Record<string, UiIndicatorSeries>;
   /** Incremented by every applied payload. */

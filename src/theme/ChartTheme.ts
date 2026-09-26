@@ -1,6 +1,7 @@
 /** Colors are any Skia-parsable color string (`#RRGGBB`, `#RRGGBBAA`, `rgba()`). */
 export type ColorValue = string;
 
+/** Colors of every chart element (see `defaultDarkTheme`). */
 export interface ChartTheme {
   /** Canvas background (main chart area). */
   background: ColorValue;

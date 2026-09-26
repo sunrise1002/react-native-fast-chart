@@ -19,6 +19,7 @@ export type PriceSource =
 /** Any per-bar input column: a price source or the bar volume. */
 export type SeriesSource = PriceSource | 'volume';
 
+/** Every `PriceSource` value (indicator `source` param options). */
 export const PRICE_SOURCES: readonly PriceSource[] = Object.freeze([
   'open',
   'high',
@@ -89,6 +90,7 @@ export interface Indicator<TConfig, TResult = IndicatorResult> {
   ): TResult;
 }
 
+/** Per-indicator drawing overrides (colors, widths, histogram coloring). */
 export interface IndicatorStyle {
   visible: boolean;
   /** Line width, dp. Defaults to 1.5. */
@@ -152,18 +154,22 @@ export interface LinePoint {
   value: number | null;
 }
 
+/** Named line series of a multi-output indicator (e.g. MACD). */
 export interface MultiLineResult {
   lines: Readonly<Record<string, readonly LinePoint[]>>;
 }
 
+/** Sign class of a histogram bar (drives its color). */
 export type HistogramPolarity = 'positive' | 'negative' | 'neutral';
 
+/** Histogram sample with its polarity. */
 export interface HistogramPoint {
   time: UnixMs;
   value: number;
   polarity?: HistogramPolarity;
 }
 
+/** Band sample (Bollinger-style upper / middle / lower). */
 export interface BandPoint {
   time: UnixMs;
   upper: number;

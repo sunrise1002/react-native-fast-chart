@@ -7,6 +7,7 @@ import { ListenerSet } from '../utils/ListenerSet';
  */
 export type RealtimeStatus = 'live' | 'reconnecting' | 'delayed' | 'offline';
 
+/** Every `RealtimeStatus` value. */
 export const REALTIME_STATUSES: readonly RealtimeStatus[] = Object.freeze([
   'live',
   'reconnecting',
@@ -14,6 +15,7 @@ export const REALTIME_STATUSES: readonly RealtimeStatus[] = Object.freeze([
   'offline',
 ]);
 
+/** Type guard for `RealtimeStatus`. */
 export function isRealtimeStatus(value: unknown): value is RealtimeStatus {
   return REALTIME_STATUSES.includes(value as RealtimeStatus);
 }

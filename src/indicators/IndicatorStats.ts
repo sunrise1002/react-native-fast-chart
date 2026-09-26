@@ -8,6 +8,7 @@ export interface IndicatorComputeCounts {
   incremental: number;
 }
 
+/** Full vs incremental computation counts (`indicators.getComputeStats()`). */
 export interface IndicatorComputeStats extends IndicatorComputeCounts {
   /** Flushes that computed at least one indicator. */
   flushes: number;

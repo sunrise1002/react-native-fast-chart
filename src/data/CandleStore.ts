@@ -24,6 +24,7 @@ import {
 export type CandleStoreChangeKind =
   'reset' | 'append' | 'updateLast' | 'prepend' | 'patch';
 
+/** Change notification of a `CandleStore` (reused object — copy fields to keep them). */
 export interface CandleStoreChange {
   readonly kind: CandleStoreChangeKind;
   /** Store version after the change. */

@@ -14,6 +14,7 @@ export const FRAME_BUCKETS = 500;
 /** Default frame budget: 60 Hz. */
 export const DEFAULT_FRAME_TARGET_MS = 1000 / 60;
 
+/** Constant-memory frame-interval histogram (see `createFrameStats`). */
 export interface FrameStatsAccumulator {
   /** Frame budget, ms (dropped-frame threshold). */
   targetMs: number;
@@ -24,6 +25,7 @@ export interface FrameStatsAccumulator {
   histogram: Float64Array;
 }
 
+/** Summary of an accumulator: avg / p95 / max interval and dropped frames. */
 export interface FrameStatsSummary {
   frames: number;
   avgMs: number;
@@ -33,6 +35,7 @@ export interface FrameStatsSummary {
   dropped: number;
 }
 
+/** Creates an empty accumulator for a frame budget (default 60 Hz). */
 export function createFrameStats(
   targetMs = DEFAULT_FRAME_TARGET_MS
 ): FrameStatsAccumulator {
@@ -107,6 +110,7 @@ export function summarizeFrameStats(
   };
 }
 
+/** Clears an accumulator in place (keeps its budget). */
 export function resetFrameStats(stats: FrameStatsAccumulator): void {
   'worklet';
   stats.count = 0;

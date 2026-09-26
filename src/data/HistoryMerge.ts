@@ -20,6 +20,7 @@ export interface MergeOptions {
   policy?: MergeConflictPolicy;
 }
 
+/** Counts of a history merge (`prependBars`). */
 export interface MergeResult {
   /** Bars inserted before the previous first bar. */
   prepended: number;

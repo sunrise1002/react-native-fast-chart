@@ -32,6 +32,7 @@ import {
 
 export type { IndicatorUpdate } from './IndicatorCompute';
 
+/** Receives the indicator results changed by one flush. */
 export type IndicatorUpdateListener = (
   updates: readonly IndicatorUpdate[]
 ) => void;

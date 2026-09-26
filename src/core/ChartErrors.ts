@@ -18,6 +18,7 @@
 export type ChartErrorSource =
   'render' | 'data' | 'indicator' | 'history' | 'config' | 'telemetry';
 
+/** Error reported through `onError` / `subscribeErrors`. */
 export interface ChartErrorEvent {
   source: ChartErrorSource;
   error: Error;

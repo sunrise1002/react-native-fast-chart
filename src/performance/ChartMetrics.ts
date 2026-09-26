@@ -19,6 +19,7 @@ export const METRIC_CHANNELS: readonly MetricChannel[] = [
   'data',
 ];
 
+/** Point-in-time copy of all metric channels. */
 export interface ChartMetricsSnapshot {
   /** Frames per second derived from the average frame interval. */
   fps: number;
@@ -27,6 +28,7 @@ export interface ChartMetricsSnapshot {
   channels: Record<MetricChannel, TimingStats>;
 }
 
+/** Per-channel timing profilers of a chart (`handle.metrics`); active with `config.debug.profiling`. */
 export interface ChartMetrics {
   readonly enabled: boolean;
   /** Profiler for a channel; the no-op profiler when disabled. */

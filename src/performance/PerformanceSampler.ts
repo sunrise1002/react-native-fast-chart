@@ -32,6 +32,7 @@ export interface ChartPerformanceSample {
   bars: number;
 }
 
+/** `onPerformanceSample` callback (JS thread). Errors are reported as `telemetry`. */
 export type ChartPerformanceSampleHandler = (
   sample: ChartPerformanceSample
 ) => void;

@@ -1,6 +1,7 @@
 import { deepMerge, type DeepPartial } from '../utils/deepMerge';
 import type { ChartTheme } from './ChartTheme';
 
+/** Deep-partial `ChartTheme` merged over a base theme. */
 export type ChartThemeOverride = DeepPartial<ChartTheme>;
 
 /**

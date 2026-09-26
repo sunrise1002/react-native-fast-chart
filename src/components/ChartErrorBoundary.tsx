@@ -10,6 +10,7 @@ import {
 export type ChartErrorFallback =
   ReactNode | ((error: Error, retry: () => void) => ReactNode);
 
+/** Props of `ChartErrorBoundary`. */
 export interface ChartErrorBoundaryProps {
   children?: ReactNode;
   /** Telemetry: called once per caught error (`source: 'render'`). */

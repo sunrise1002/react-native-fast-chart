@@ -18,6 +18,7 @@ import type { LogicalRange } from './ChartTypes';
  */
 export type ViewportResetPolicy = 'reset' | 'keepZoom';
 
+/** Options of `setData`. */
 export interface SetDataOptions {
   /** Default `'reset'`. */
   viewport?: ViewportResetPolicy;

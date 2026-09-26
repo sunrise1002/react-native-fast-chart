@@ -22,6 +22,7 @@ export const CHART_SETTINGS_VERSION = 1;
 /** Plain config values that survive JSON. */
 export type IndicatorSettingValue = number | string | boolean;
 
+/** Persisted indicator. */
 export interface IndicatorSettings {
   id: string;
   type: string;
@@ -30,6 +31,7 @@ export interface IndicatorSettings {
   style: Partial<IndicatorStyle>;
 }
 
+/** Persisted pane. */
 export interface PaneSettings {
   id: string;
   heightRatio: number;
@@ -38,6 +40,7 @@ export interface PaneSettings {
   explicit: boolean;
 }
 
+/** Persistable chart layout: indicators, panes, theme / timeframe tags. */
 export interface ChartSettings {
   version: typeof CHART_SETTINGS_VERSION;
   /** Display order. */
@@ -50,21 +53,25 @@ export interface ChartSettings {
   timeframe?: string;
 }
 
+/** A setting dropped or repaired by `deserializeChartSettings`. */
 export interface ChartSettingsIssue {
   /** JSON-path-like location, e.g. `indicators[2].type`. */
   path: string;
   reason: string;
 }
 
+/** Result of `deserializeChartSettings`. */
 export interface DeserializedChartSettings {
   settings: ChartSettings;
   issues: ChartSettingsIssue[];
 }
 
+/** Empty settings: no indicators, automatic panes. */
 export function defaultChartSettings(): ChartSettings {
   return { version: CHART_SETTINGS_VERSION, indicators: [], panes: [] };
 }
 
+/** Engine state `createChartSettings` reads from. */
 export interface ChartSettingsSource {
   indicators: readonly { readonly definition: IndicatorDefinition }[];
   panes: readonly PaneDefinition[];
@@ -105,6 +112,7 @@ export function createChartSettings(
   return settings;
 }
 
+/** Serializes settings to JSON (see `deserializeChartSettings`). */
 export function serializeChartSettings(settings: ChartSettings): string {
   return JSON.stringify(settings);
 }

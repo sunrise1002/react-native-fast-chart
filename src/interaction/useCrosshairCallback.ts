@@ -16,6 +16,7 @@ export interface CrosshairChange {
   volume: number;
 }
 
+/** `onCrosshairChange` callback: the hovered bar, or `null` when the crosshair hides. */
 export type CrosshairChangeHandler = (change: CrosshairChange | null) => void;
 
 /** Snapshot of bar `index` (`null` when out of range). Worklet. */

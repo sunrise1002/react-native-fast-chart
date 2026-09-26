@@ -17,11 +17,13 @@ export type Timeframe =
   | '1M'
   | (string & {});
 
+/** Width / height, dp. */
 export interface Size {
   width: number;
   height: number;
 }
 
+/** Axis-aligned rectangle, dp. */
 export interface Rect {
   x: number;
   y: number;

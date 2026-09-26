@@ -59,6 +59,7 @@ export type IndicatorScaleSpec =
   | { kind: 'zeroCentered' }
   | { kind: 'auto' };
 
+/** Y-scale strategy name of an indicator. */
 export type IndicatorScaleKind = IndicatorScaleSpec['kind'];
 
 /** Legend / axis number format of an indicator's values. */

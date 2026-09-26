@@ -30,6 +30,7 @@ export function placementOf(paneId: string): IndicatorPlacement {
   return paneId === PRICE_PANE_ID ? 'overlay' : 'pane';
 }
 
+/** Options of `createIndicatorInput`. */
 export interface CreateIndicatorOptions {
   /** Defaults to the type's placement; unsupported placements fall back. */
   placement?: IndicatorPlacement;

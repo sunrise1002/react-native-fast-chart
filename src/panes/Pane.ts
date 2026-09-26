@@ -1,3 +1,4 @@
+/** `price` (the single main pane) or `indicator`. */
 export type PaneType = 'price' | 'indicator';
 
 /** Id of the main price pane, which always exists and is always first. */

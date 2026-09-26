@@ -18,6 +18,7 @@ import { parseTimeframe, type TimeframeSpec } from './Timeframe';
 export type AggregateResult =
   'created' | 'updated' | 'patched' | 'ignored' | 'rejected';
 
+/** Options of `RealtimeBarAggregator`. */
 export interface RealtimeBarAggregatorOptions {
   /** Bar interval, e.g. `'1m'` (see `parseTimeframe`). */
   timeframe: string;

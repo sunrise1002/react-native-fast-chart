@@ -19,6 +19,7 @@ import type { UnixMs } from './Candle';
  */
 export type TimeframeUnit = 's' | 'm' | 'h' | 'd' | 'w' | 'M';
 
+/** Parsed timeframe (`parseTimeframe('15m')`). */
 export interface TimeframeSpec {
   readonly unit: TimeframeUnit;
   readonly count: number;

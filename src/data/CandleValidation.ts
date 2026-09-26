@@ -11,23 +11,27 @@ export type CandleIssueReason =
   | 'DUPLICATE_TIME'
   | 'OUT_OF_ORDER';
 
+/** A dropped / invalid row: its input index and the reason. */
 export interface CandleIssue {
   /** Index of the offending row in the input array. */
   index: number;
   reason: CandleIssueReason;
 }
 
+/** Result of `validateCandles`. */
 export interface CandleValidationResult {
   /** `true` when every row is valid and times are strictly increasing. */
   valid: boolean;
   issues: CandleIssue[];
 }
 
+/** Options of `normalizeCandles`. */
 export interface NormalizeCandlesOptions {
   /** Unit of `time` in the input. Output is always Unix ms. Default `'ms'`. */
   timeUnit?: TimeUnit;
 }
 
+/** Clean candles plus the issues of every dropped row. */
 export interface NormalizeCandlesResult {
   /** Valid candles, strictly ascending by time, one per timestamp. */
   candles: Candle[];

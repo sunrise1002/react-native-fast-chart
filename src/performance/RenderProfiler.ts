@@ -9,6 +9,7 @@ export const defaultClock: Clock =
     ? () => perf.now()
     : () => Date.now();
 
+/** Rolling timing statistics of one metric channel, ms. */
 export interface TimingStats {
   /** Samples currently held (≤ capacity). */
   count: number;

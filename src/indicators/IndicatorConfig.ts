@@ -17,6 +17,7 @@ export interface NumberParam {
   default: number;
 }
 
+/** Price-source param descriptor. */
 export interface SourceParam {
   key: string;
   label: string;
@@ -25,10 +26,13 @@ export interface SourceParam {
   default: PriceSource;
 }
 
+/** Descriptor of an indicator param (drives settings UIs and validation). */
 export type IndicatorParam = NumberParam | SourceParam;
 
+/** A resolved indicator config value. */
 export type IndicatorConfigValue = number | string;
 
+/** Unvalidated indicator config as supplied by the host. */
 export type RawIndicatorConfig = Readonly<Record<string, unknown>>;
 
 /** Clamped / rounded value of a numeric param (default when invalid). */
@@ -68,6 +72,7 @@ export function paramDefaults(
 
 export const MAX_INDICATOR_PERIOD = 5000;
 
+/** Integer `period` param descriptor (1 … `MAX_INDICATOR_PERIOD`). */
 export function periodParam(defaultValue: number): NumberParam {
   return {
     key: 'period',
@@ -80,6 +85,7 @@ export function periodParam(defaultValue: number): NumberParam {
   };
 }
 
+/** `source` param descriptor (`PRICE_SOURCES`). */
 export function sourceParam(defaultValue: PriceSource = 'close'): SourceParam {
   return {
     key: 'source',

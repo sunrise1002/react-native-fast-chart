@@ -11,6 +11,7 @@ export interface ChartDebugConfig {
   profiling: boolean;
 }
 
+/** Axis sizes, right margin and overlay scale layout, dp. */
 export interface ChartLayoutConfig {
   /**
    * Minimum width of the right price axis, dp. The axis grows to fit its
@@ -31,6 +32,7 @@ export interface ChartLayoutConfig {
   paneSeparatorHitSlop: number;
 }
 
+/** Bar spacing limits, zoom bounds and conflation. */
 export interface ChartViewportConfig {
   /** Initial distance between bar centers, dp. */
   initialBarSpacing: number;
@@ -56,6 +58,7 @@ export interface ChartViewportConfig {
   conflationPx: number;
 }
 
+/** Enables / disables the built-in gestures. */
 export interface ChartInteractionConfig {
   panEnabled: boolean;
   pinchEnabled: boolean;
@@ -106,6 +109,7 @@ export interface ChartTelemetryConfig {
 /** Crosshair release behavior. */
 export type CrosshairMode = 'hold' | 'sticky';
 
+/** Long-press crosshair timing and release behavior. */
 export interface ChartCrosshairConfig {
   /**
    * `'hold'` (TradingView): hides `holdMs` after the finger lifts.
@@ -118,6 +122,7 @@ export interface ChartCrosshairConfig {
   holdMs: number;
 }
 
+/** Price-pane overlays: last-price marker and legend. */
 export interface ChartOverlaysConfig {
   /** Last-price dashed line + axis badge. */
   lastPrice: boolean;
@@ -168,6 +173,7 @@ export interface ChartConfig {
   debug: ChartDebugConfig;
 }
 
+/** Defaults of every `ChartConfig` key (frozen). See docs/API.md §3. */
 export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
   symbol: Object.freeze({
     pricePrecision: null,

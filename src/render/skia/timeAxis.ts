@@ -32,18 +32,19 @@ export function timeLabelSpacing(
 
 /**
  * Reused per-layer state of the time-axis pass: offset resolvers of the
- * chart zone and of UTC (daily+ bars are calendar days) keep their
- * validity windows across frames, and the visible-range scratch.
+ * chart zone and of the daily-bar zone (`axes.dailyBarsTimeZone`: UTC or
+ * the chart zone) keep their validity windows across frames, and the
+ * visible-range scratch.
  */
 export interface TimeAxisScratch {
   zone: OffsetResolver;
-  utc: OffsetResolver;
+  daily: OffsetResolver;
   range: VisibleRange;
 }
 
 /**
  * Fills `out` with the time-axis ticks of the visible bars (daily+ bars
- * use their UTC calendar date). Returns `true` when labels need seconds.
+ * use their calendar date in the daily-bar zone). Returns `true` when labels need seconds.
  * Worklet.
  */
 export function computeTimeTicks(
@@ -67,7 +68,7 @@ export function computeTimeTicks(
       range.startIndex,
       range.endIndex,
       k,
-      barMs >= MS_PER_DAY ? scratch.utc : scratch.zone,
+      barMs >= MS_PER_DAY ? scratch.daily : scratch.zone,
       minBars,
       out
     );

@@ -6,7 +6,7 @@
  * | TZ1  | fixedOffsetMs 'utc' / 540 / -300 / 90.4               | Equivalence        | 0 / 9 h / -5 h / 90 min                   |
  * | TZ2  | fixedOffsetMs 'local'                                 | Equivalence        | NaN                                       |
  * | TZ3  | fixedOffsetMs 841 / -841 / ±840                       | Boundary (±1)      | clamped to ±14 h / kept                   |
- * | TZ4  | fixedOffsetMs NaN / ∞ / non-number                    | Invalid            | 0 (UTC)                                   |
+ * | TZ4  | fixedOffsetMs NaN / ∞ / IANA name                     | Invalid / IANA     | 0 (UTC) / NaN (resolved via table)        |
  * | TZ5  | resolver for fixed zone                               | Equivalence        | never probes                              |
  * | TZ6  | local resolver, constant probe, ascending lookups     | Equivalence        | 2 probes per 7-day window (cached)        |
  * | TZ7  | local resolver, transition inside the window          | Equivalence        | exact 1 ms boundary: before / at          |
@@ -53,13 +53,15 @@ describe('fixedOffsetMs', () => {
     expect(fixedOffsetMs(zone)).toBe(minutes * MS_PER_MINUTE);
   });
 
-  it.each([[NaN], [Infinity], ['Europe/Paris' as unknown as number]])(
-    'TZ4: %p → UTC',
-    (zone) => {
-      // Given / When / Then
-      expect(fixedOffsetMs(zone)).toBe(0);
-    }
-  );
+  it.each([[NaN], [Infinity]])('TZ4: %p → UTC', (zone) => {
+    // Given / When / Then
+    expect(fixedOffsetMs(zone)).toBe(0);
+  });
+
+  it('TZ4: IANA name → NaN (not a fixed offset)', () => {
+    // Given / When / Then
+    expect(fixedOffsetMs('Europe/Paris')).toBeNaN();
+  });
 });
 
 describe('offsetAt', () => {

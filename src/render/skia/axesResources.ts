@@ -19,6 +19,7 @@ function scratchPriceScale(): MutablePriceScale {
  */
 export function createAxesResources(
   timeZone: ChartTimeZone,
+  dailyZone: ChartTimeZone,
   gridLineWidth: number,
   pixelRatio: number
 ) {
@@ -31,7 +32,7 @@ export function createAxesResources(
     marker: createLastPriceMarker(),
     timeAxis: {
       zone: createOffsetResolver(timeZone),
-      utc: createOffsetResolver('utc'),
+      daily: createOffsetResolver(dailyZone),
       range: { startIndex: 0, endIndex: -1 },
     },
     caches: createAxisLabelCaches(),

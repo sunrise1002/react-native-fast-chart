@@ -1,12 +1,21 @@
 import { MS_PER_DAY, MS_PER_MINUTE } from './CivilTime';
+import {
+  getZoneTable,
+  zoneTableOffset,
+  zoneTableWindowEnd,
+  type ZoneTable,
+} from './ZoneTable';
 
 /**
- * Chart time zone (spec Phase 19.3; the full policy lands in P9):
+ * Chart time zone (spec Phase 19.3):
  * - `'local'` — the device zone, DST-aware (default);
- * - `'utc'`;
- * - a number — fixed UTC offset in minutes east of UTC (`+540` = UTC+9).
+ * - `'utc'` / `'UTC'`;
+ * - a number — fixed UTC offset in minutes east of UTC (`+540` = UTC+9);
+ * - an IANA name (`'America/New_York'`), DST-aware, resolved through
+ *   `Intl` on the JS thread (falls back to UTC when unavailable — see
+ *   `isSupportedTimeZone`).
  */
-export type ChartTimeZone = 'local' | 'utc' | number;
+export type ChartTimeZone = 'local' | 'utc' | 'UTC' | number | (string & {});
 
 /** Largest valid fixed offset (UTC−14:00 … UTC+14:00). */
 export const MAX_UTC_OFFSET_MINUTES = 14 * 60;
@@ -23,6 +32,8 @@ export const OFFSET_PROBE_WINDOW_MS = 7 * MS_PER_DAY;
  */
 export interface OffsetResolver {
   local: boolean;
+  /** Transition table of an IANA zone (`null` otherwise). */
+  table: ZoneTable | null;
   offsetMs: number;
   validFrom: number;
   validTo: number;
@@ -36,13 +47,26 @@ export function deviceOffsetMs(t: number): number {
   return -new Date(t).getTimezoneOffset() * MS_PER_MINUTE;
 }
 
+/** `true` for `'utc'` / `'UTC'`. */
+function isUtcName(zone: ChartTimeZone): boolean {
+  'worklet';
+  return zone === 'utc' || zone === 'UTC';
+}
+
+/** `true` for a string zone that must be resolved through `Intl`. */
+export function isIanaTimeZone(zone: ChartTimeZone): zone is string {
+  'worklet';
+  return typeof zone === 'string' && zone !== 'local' && !isUtcName(zone);
+}
+
 /**
- * Fixed offset in ms for a zone setting, `NaN` for `'local'`. Invalid
- * numbers fall back to UTC; out-of-range offsets are clamped.
+ * Fixed offset in ms for a zone setting, `NaN` for `'local'` and IANA
+ * names. Invalid numbers fall back to UTC; out-of-range offsets are
+ * clamped.
  */
 export function fixedOffsetMs(zone: ChartTimeZone): number {
   'worklet';
-  if (zone === 'local') {
+  if (zone === 'local' || isIanaTimeZone(zone)) {
     return NaN;
   }
   if (typeof zone !== 'number' || !Number.isFinite(zone)) {
@@ -57,21 +81,29 @@ export function fixedOffsetMs(zone: ChartTimeZone): number {
   return Math.round(clamped) * MS_PER_MINUTE;
 }
 
+/**
+ * Resolver for a zone setting (JS thread: IANA zones build their `Intl`
+ * transition table here). Unresolvable IANA names behave as UTC.
+ */
 export function createOffsetResolver(zone: ChartTimeZone): OffsetResolver {
-  'worklet';
-  const fixed = fixedOffsetMs(zone);
-  const local = Number.isNaN(fixed);
+  const table = isIanaTimeZone(zone) ? getZoneTable(zone) : null;
+  const fixed = table !== null ? NaN : fixedOffsetMs(zone);
+  const local = zone === 'local';
+  const dynamic = local || table !== null;
   return {
     local,
-    offsetMs: local ? 0 : fixed,
-    validFrom: local ? 0 : -Infinity,
-    validTo: local ? 0 : Infinity,
+    table,
+    offsetMs: dynamic ? 0 : Number.isNaN(fixed) ? 0 : fixed,
+    validFrom: dynamic ? 0 : -Infinity,
+    validTo: dynamic ? 0 : Infinity,
     probes: 0,
   };
 }
 
 /**
- * Offset (ms to add to UTC) at instant `t`. Local zones probe the device
+ * Offset (ms to add to UTC) at instant `t`. IANA zones binary-search
+ * their transition table (and cache the window up to the next
+ * transition). Local zones probe the device
  * offset at `t` and `t + OFFSET_PROBE_WINDOW_MS`; when they differ, a binary
  * search (1 ms precision, ~30 probes) finds the exact transition. Consecutive lookups over
  * ascending bars therefore cost ~1 probe per week of data. Non-finite `t`
@@ -88,6 +120,14 @@ export function offsetAt(
     !Number.isFinite(t)
   ) {
     return resolver.offsetMs;
+  }
+  const table = resolver.table;
+  if (table !== null) {
+    const offset = zoneTableOffset(table, t);
+    resolver.offsetMs = offset;
+    resolver.validFrom = t;
+    resolver.validTo = zoneTableWindowEnd(table, t);
+    return offset;
   }
   const at = probe(t);
   const end = t + OFFSET_PROBE_WINDOW_MS;

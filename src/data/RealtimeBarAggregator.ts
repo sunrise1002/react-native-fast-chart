@@ -1,14 +1,11 @@
+import type { ChartTimeZone } from '../axes/TimeZone';
+import { createBucketAligner, type BucketAligner } from './BucketAligner';
 import type { Candle } from './Candle';
 import type { CandleStore } from './CandleStore';
 import { getBarValuesIssue, normalizeCandles } from './CandleValidation';
 import type { CandleIssue } from './CandleValidation';
 import { mergeCandles } from './HistoryMerge';
-import {
-  getBucketStart,
-  getNextBucketStart,
-  parseTimeframe,
-  type TimeframeSpec,
-} from './Timeframe';
+import { parseTimeframe, type TimeframeSpec } from './Timeframe';
 
 /**
  * Outcome of one realtime update:
@@ -38,6 +35,14 @@ export interface RealtimeBarAggregatorOptions {
    * always ignored (a single trade must not fabricate a historical bar).
    */
   lateTicks?: 'apply' | 'ignore';
+  /**
+   * Zone whose midnight starts daily / weekly / monthly buckets (DST-aware
+   * for `'local'` and IANA names). Default `'utc'` (Binance convention).
+   * Use the chart's `axes.timeZone` together with
+   * `axes.dailyBarsTimeZone: 'chart'` so labels match the buckets.
+   * Sub-day timeframes are always epoch-aligned.
+   */
+  timeZone?: ChartTimeZone;
 }
 
 /** Pre-aggregated kline update (Binance `k` payload field names). */
@@ -68,6 +73,7 @@ export class RealtimeBarAggregator {
   private readonly fillGaps: boolean;
   private readonly maxGapFillBars: number;
   private readonly applyLateTicks: boolean;
+  private readonly buckets: BucketAligner;
   private seenResetVersion = -1;
   /** Bucket of the bar whose close was set by `lastTradeTime`. */
   private tradeBucket = NaN;
@@ -88,6 +94,7 @@ export class RealtimeBarAggregator {
     this.fillGaps = options.fillGaps ?? false;
     this.maxGapFillBars = options.maxGapFillBars ?? DEFAULT_MAX_GAP_FILL;
     this.applyLateTicks = options.lateTicks !== 'ignore';
+    this.buckets = createBucketAligner(spec, options.timeZone);
   }
 
   /** Aggregates one trade. `time` is the trade time in Unix ms. */
@@ -99,7 +106,7 @@ export class RealtimeBarAggregator {
     }
     this.syncWithStore();
     const store = this.store;
-    const bucket = getBucketStart(time, this.timeframe);
+    const bucket = this.buckets.bucketOf(time);
     if (bucket <= this.closedUntil) {
       return 'ignored';
     }
@@ -246,7 +253,7 @@ export class RealtimeBarAggregator {
     const cols = store.columns;
     const prevClose = cols.close[cols.offset + n - 1] as number;
     const bars: Candle[] = [];
-    let t = getNextBucketStart(store.lastTime, this.timeframe);
+    let t = this.buckets.nextBucket(store.lastTime);
     while (t < bucket) {
       if (bars.length >= this.maxGapFillBars) {
         return;
@@ -259,7 +266,7 @@ export class RealtimeBarAggregator {
         close: prevClose,
         volume: 0,
       });
-      t = getNextBucketStart(t, this.timeframe);
+      t = this.buckets.nextBucket(t);
     }
     store.appendMany(bars); // no-op for an empty list
   }

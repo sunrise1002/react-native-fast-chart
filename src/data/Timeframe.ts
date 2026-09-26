@@ -12,6 +12,10 @@ import type { UnixMs } from './Candle';
  * - `w`: weeks start on **Monday 00:00 UTC** (the epoch was a Thursday).
  * - `M`: first day of the month 00:00 UTC; multi-month buckets are counted
  *   from January 1970.
+ *
+ * Calendar units (`d`, `w`, `M`) can be aligned to another zone's
+ * midnight with `offsetMs` (ms to add to UTC, e.g. `+9 h` for KRX daily
+ * bars). Sub-day units are always epoch-aligned.
  */
 export type TimeframeUnit = 's' | 'm' | 'h' | 'd' | 'w' | 'M';
 
@@ -66,28 +70,55 @@ function floorTo(time: number, size: number, origin: number): number {
   return Math.floor((time - origin) / size) * size + origin;
 }
 
-/** Open time of the bucket containing `time`; `NaN` for non-finite input. */
-export function getBucketStart(time: UnixMs, spec: TimeframeSpec): UnixMs {
+/** `true` for units aligned to calendar midnights (`d`, `w`, `M`). */
+export function isCalendarUnit(unit: TimeframeUnit): boolean {
+  return unit === 'd' || unit === 'w' || unit === 'M';
+}
+
+/** `offsetMs` when it applies to `spec` (finite, calendar unit), else 0. */
+function calendarOffset(spec: TimeframeSpec, offsetMs: number): number {
+  return isCalendarUnit(spec.unit) && Number.isFinite(offsetMs) ? offsetMs : 0;
+}
+
+/**
+ * Open time of the bucket containing `time`; `NaN` for non-finite input.
+ * `offsetMs` shifts calendar buckets to that zone's midnight.
+ */
+export function getBucketStart(
+  time: UnixMs,
+  spec: TimeframeSpec,
+  offsetMs = 0
+): UnixMs {
   if (!Number.isFinite(time)) {
     return NaN;
   }
+  const offset = calendarOffset(spec, offsetMs);
+  const local = time + offset;
   if (spec.unit === 'M') {
-    const date = new Date(time);
+    const date = new Date(local);
     const months = date.getUTCFullYear() * 12 + date.getUTCMonth() - 1970 * 12;
     const aligned = Math.floor(months / spec.count) * spec.count;
-    return Date.UTC(1970, aligned, 1);
+    return Date.UTC(1970, aligned, 1) - offset;
   }
-  return floorTo(time, spec.ms, spec.unit === 'w' ? WEEK_ORIGIN : 0);
+  return floorTo(local, spec.ms, spec.unit === 'w' ? WEEK_ORIGIN : 0) - offset;
 }
 
-/** Open time of the bucket following the one that starts at `bucketStart`. */
+/**
+ * Open time of the bucket following the one that starts at `bucketStart`
+ * (same `offsetMs` as for `getBucketStart`).
+ */
 export function getNextBucketStart(
   bucketStart: UnixMs,
-  spec: TimeframeSpec
+  spec: TimeframeSpec,
+  offsetMs = 0
 ): UnixMs {
+  const offset = calendarOffset(spec, offsetMs);
   if (spec.unit === 'M') {
-    const date = new Date(bucketStart);
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + spec.count, 1);
+    const date = new Date(bucketStart + offset);
+    return (
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + spec.count, 1) -
+      offset
+    );
   }
   return bucketStart + spec.ms;
 }

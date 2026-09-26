@@ -1693,3 +1693,176 @@ Skia strategy experiments are in [`PERFORMANCE.md`](./PERFORMANCE.md).
   the axes resources when the glyph table or separator changes.
 - `src/index.ts` and some test suites exceed 300 lines. They are export
   lists and case tables, and splitting them would not help readability.
+
+## P9 — Precision, hardening, API stabilization
+
+The public surface is documented in [`API.md`](./API.md). Breaking changes
+and migration notes are in [`CHANGELOG.md`](../CHANGELOG.md).
+
+### What was built
+
+- **Symbol precision** (`axes/SymbolPrecision.ts`)
+  - `config.symbol`: `pricePrecision`, `tickSize`, `quantityStep`,
+    `volumePrecision`.
+  - `resolveSymbolPrecision` turns these into price, tick and volume
+    decimals. `NaN` means automatic.
+  - `axes.pricePrecision` still works as a deprecated fallback.
+  - `createPriceTicks` rounds steps up to a multiple of `tickSize`.
+  - `snapToTickSize` removes float noise (`toFixed` at the step's own
+    decimals).
+  - Legend volumes use `volumeDecimals` when unscaled. Compact K/M/B
+    volumes keep 2 decimals.
+- **Formatter hooks** (`axes/Formatters.ts`)
+  - `priceFormatter(price, decimals)` and
+    `timeFormatter(localTime, weight, barMs)` are worklets, called from
+    the axes, overlay and legend layers.
+  - `safePriceLabel` / `safeTimeLabel` fall back to the built-in format
+    when a formatter throws or returns a non-string.
+  - The label caches key on the formatter, so a formatter change
+    invalidates them.
+  - Formatters are props, not config, because config is compared with
+    `JSON.stringify`, which drops functions.
+- **IANA time zones** (`axes/ZoneTable.ts`, `TimeZone.ts`)
+  - `intlOffsetProbe` reads zone offsets through
+    `Intl.DateTimeFormat#formatToParts` on the JS thread.
+  - `buildZoneTable` samples every 14 days from 1990 to now + 400 d, and
+    bisects each change to the minute.
+  - The result is two `Float64Array`s, cached per zone.
+  - `OffsetResolver` holds the table and looks it up by binary search on
+    the UI thread. Its validity window runs to the next transition, so a
+    pan usually hits the cache.
+  - `createOffsetResolver` now runs on the JS thread (it builds the
+    table). Callers already created resolvers in `useMemo`.
+  - A zone that can't be resolved falls back to UTC, and
+    `useChartTelemetry` reports it (`config`).
+- **Zone-aware buckets** (`data/BucketAligner.ts`)
+  - Aligns d/w/M buckets to a zone's midnight, using the offset at the
+    bucket start.
+  - On DST days the offset at the trade time differs from the offset at
+    midnight. The aligner re-aligns with the midnight offset.
+  - `nextBucket` steps one interval plus 12 h, then re-aligns.
+  - Used by `RealtimeBarAggregator({ timeZone })`.
+  - `axes.dailyBarsTimeZone: 'chart'` makes day labels read dates in the
+    chart zone, so labels and buckets match.
+- **Session gaps**
+  - The X axis stays index-based, so closed sessions collapse.
+  - `SessionGaps.test.ts` pins the behavior:
+    - equities, 30 m bars, Mon–Fri 14:30–20:30Z;
+    - no fabricated weekend bars;
+    - the weekend gap takes one slot;
+    - the Monday tick is labelled as a day boundary;
+    - 24/7 data for contrast.
+- **Sanitizing** (`utils/Sanitize.ts`, `core/ConfigSanitize.ts`)
+  - Allocation-free worklet guards: `isFiniteNumber`, `finiteOr`,
+    `clampCoordinate` (±1e6), `clampFinite`, `sanitizeLength`,
+    `sanitizeRect`.
+  - Used by the candle, line and header geometry.
+  - `resolveChartConfig` sanitizes the merged config:
+    - positive and unit-interval fields;
+    - enums;
+    - nullable fields;
+    - the time-zone type;
+    - non-object sections;
+    - min > max spacing resets both limits;
+    - `initialBarSpacing` is clamped to [min, max].
+- **Errors** (`core/ChartErrors.ts`, `engine/ChartErrorChannel.ts`,
+  `components/ChartErrorBoundary.tsx`)
+  - `ChartErrorEvent` sources: `render`, `data`, `indicator`, `history`,
+    `config`, `telemetry`.
+  - The channel fans out non-fatal issues through
+    `controller.subscribeErrors`:
+    - rows dropped by `setData` and the `candles` diff;
+    - bars rejected by `upsertBar`;
+    - indicator failures, via the new `IndicatorEngine` `onError`
+      option, so the store mutator no longer rethrows;
+    - history errors.
+  - `TradingChart` is now an outer wrapper: `ChartErrorBoundary` (with
+    `resetKey = controller`) around `TradingChartInner`.
+  - Handlers are guarded by `reportChartError`.
+- **Performance telemetry** (`performance/PerformanceSampler.ts`,
+  `render/skia/useFrameProfiler.ts`)
+  - While `onPerformanceSample` is set, the UI frame callback batches
+    `[timestamp, buildMs]` pairs and posts them every 30 frames through
+    `scheduleOnRN`.
+  - `PerformanceSampler` aggregates them into one
+    `ChartPerformanceSample` per `telemetry.performanceSampleMs`
+    (≥ 1000 ms).
+  - A backwards clock restarts the window.
+- **Controller split**
+  - `engine/ChartDataFeed.ts` is the data half: `setData`, the diff,
+    realtime and history.
+  - `engine/createTradingChartController.ts` holds the factory and the
+    hook, so `ChartControllerImpl` stays under 300 lines.
+- **API stabilization**
+  - `src/index.ts` was curated from about 450 exports down to the
+    documented surface. `index.test.ts` pins the exact runtime list and
+    asserts that internals stay hidden.
+  - Test IDs and `BENCHMARK_SCENARIOS` moved to `/testing`.
+  - Every public export has TSDoc.
+  - New docs: `docs/API.md` and `CHANGELOG.md` (with the semver policy),
+    a README rewrite, and a manual device-profiling section in
+    `PERFORMANCE.md` §10.
+- **Package**
+  - `"sideEffects": false`.
+  - `yarn prepare` (bob: ESM + d.ts) is green.
+  - `npm pack --dry-run` contains 775 files, 514 kB: only `lib/`, `src/`,
+    LICENSE, README and package.json.
+  - The exports map resolves `.`, `./testing` and `./package.json` under
+    both the default and the `react-native-fast-chart-source`
+    conditions. Deep imports fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
+- **Example**
+  - The Market screen shows per-symbol tick sizes and a local / UTC /
+    New York / +05:30 zone cycle.
+  - It uses a worklet `groupedPrice` formatter.
+  - It shows the `onError` note, an `onPerformanceSample` line and a
+    retryable `errorFallback`.
+  - `app.json` enables ProMotion.
+
+### Tests
+
+- New suites:
+  - SymbolPrecision, Formatters, ZoneTable, SessionGaps;
+  - BucketAligner (New York DST), ConfigSanitize, ChartErrors, Sanitize;
+  - ChartErrorChannel, PerformanceSampler;
+  - ChartErrorBoundary, TradingChartTelemetry;
+  - MemoryRelease (ML1–6). Subscriptions on the store, indicators,
+    panes, history and errors return to baseline after:
+    - mount / unmount cycles;
+    - 10 symbol and timeframe switches (only the new data is kept);
+    - 20 add / remove indicator cycles;
+    - `dispose`;
+    - an unmount after a render error;
+  - `axesLayerP9` / `overlayLayerP9` (formatters, precision,
+    `dailyBarsTimeZone`).
+- Extended suites: TimeZone (IANA), PriceTicks (tickSize), PriceFormat
+  (volume precision), IndicatorEngineLifecycle (`onError`), TradingChart
+  (TC17 now asserts the fallback), index (E1–E6).
+- **Counts**: 2177 tests in 115 suites (P8: 1862 in 100).
+  - Coverage: 99.91 % statements, 99.58 % branches, 99.55 % functions,
+    99.91 % lines.
+  - Every new P9 module is at 100 %.
+- **Remaining uncovered branches** all predate P9:
+  - the `__DEV__` render counter in `TradingChart.tsx`;
+  - `SkiaChartCanvas` prop defaults;
+  - `paneAxes.ts` 102;
+  - the defensive fallbacks in `useLegendLayer`, `useFrameProfiler`,
+    `CandleGeometryBatch` and `RenderProfiler`.
+
+### Known limitations / follow-ups
+
+- **Zone table range.** It covers 1990 to now + 400 days. Later instants
+  reuse the last offset, and older ones reuse the first. Apps running
+  for more than a year should call `clearZoneTableCache` (internal)
+  after the lookahead; a public refresh hook could be added in the
+  future.
+- **Worklet errors.** Errors thrown inside UI-thread worklets bypass the
+  error boundary, because they are not React errors. The renderers rely
+  on input guards instead.
+- **Formatters are not validated at runtime.** A non-worklet formatter
+  silently falls back to the built-in format on device; in Jest it runs
+  as a normal function.
+- **No device numbers yet.** The P8 benchmark and the §10 profiling
+  procedure still need to be run on hardware.
+- **README GIFs are placeholders** (`docs/media/*.gif`). Record them from
+  the example app.
+- `src/index.ts` is 304 lines, which is the curated export list.

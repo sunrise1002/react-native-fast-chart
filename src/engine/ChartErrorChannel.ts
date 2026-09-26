@@ -69,21 +69,18 @@ export function rejectedBarIssue(
   });
 }
 
-/** Reports each new history failure (`onLoadMore` threw / rejected). */
+/**
+ * Reports each history failure (`onLoadMore` threw / rejected). The loader
+ * only notifies on state changes, so every entry into `'error'` is a new
+ * failure.
+ */
 export function reportHistoryErrors(
   history: HistoryLoader,
   channel: ChartErrorChannel
 ): () => void {
-  let reported: unknown;
   return history.subscribe(() => {
-    if (history.getState() !== 'error') {
-      reported = undefined;
-      return;
-    }
-    const error = history.getError();
-    if (error !== reported) {
-      reported = error;
-      channel.report(chartIssue('history', error));
+    if (history.getState() === 'error') {
+      channel.report(chartIssue('history', history.getError()));
     }
   });
 }

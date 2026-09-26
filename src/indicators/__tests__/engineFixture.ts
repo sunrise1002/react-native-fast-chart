@@ -14,6 +14,7 @@ export function setup(
   options: {
     bars?: typeof BARS;
     registry?: ReturnType<typeof createIndicatorRegistry>;
+    onError?: (error: unknown) => void;
   } = {}
 ) {
   const store = new CandleStore(options.bars ?? BARS);
@@ -28,6 +29,7 @@ export function setup(
     },
     registry: options.registry,
     getProfiler: () => profiler,
+    onError: options.onError,
   });
   const updates: IndicatorUpdate[][] = [];
   engine.subscribeResults((u) => updates.push([...u]));

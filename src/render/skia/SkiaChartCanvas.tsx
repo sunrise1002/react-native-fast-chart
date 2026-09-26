@@ -73,7 +73,8 @@ export interface SkiaChartCanvasProps {
   lastPricePulse?: boolean;
   /** Telemetry: one report per `performanceSampleMs` (JS thread). */
   onPerformanceSample?: ChartPerformanceSampleHandler;
-  performanceSampleMs?: number;
+  /** `telemetry.performanceSampleMs`. */
+  performanceSampleMs: number;
 }
 
 /**
@@ -105,7 +106,7 @@ export function SkiaChartCanvas({
   getMetrics,
   lastPricePulse = false,
   onPerformanceSample,
-  performanceSampleMs = 5000,
+  performanceSampleMs,
 }: SkiaChartCanvasProps) {
   const font = useChartFont(theme);
   const paints = useChartPaints(theme);

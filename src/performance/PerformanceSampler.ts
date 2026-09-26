@@ -102,7 +102,8 @@ export function createPerformanceSampler(
           report = {
             startedAt,
             durationMs: duration,
-            fps: frame.avgMs > 0 ? 1000 / frame.avgMs : 0,
+            // At least one positive interval ends a window: avgMs > 0.
+            fps: 1000 / frame.avgMs,
             frame,
             build: {
               count: builds,

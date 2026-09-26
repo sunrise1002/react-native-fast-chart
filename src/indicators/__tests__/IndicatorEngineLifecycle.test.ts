@@ -4,6 +4,7 @@
  * | Case | Input / Precondition                                   | Perspective        | Expected                                        |
  * |------|--------------------------------------------------------|--------------------|-------------------------------------------------|
  * | E12  | faulty custom indicator                                | External failure   | removed update, others computed, error rethrown |
+ * | E12b | faulty indicator with onError                          | External failure   | error reported once, flush does not throw       |
  * | E13  | indicator without `update`                             | Equivalence        | tick uses calculate                             |
  * | E14  | profiler channel                                       | Normal             | begin/end per publishing flush                  |
  * | E15  | snapshotUpdates / entries stability / dispose          | Normal             | full snapshots; same ref; no more flushes       |
@@ -48,6 +49,32 @@ describe('IndicatorEngine — failures and lifecycle', () => {
       'ok:false',
       'bad:true',
     ]);
+  });
+
+  it('E12b: reports indicator failures to onError instead of throwing', () => {
+    // Given
+    const registry = createIndicatorRegistry();
+    registry.register({
+      ...(emaModule as IndicatorModule),
+      meta: { ...emaModule.meta, type: 'boom' },
+      indicator: {
+        type: 'boom',
+        calculate: () => {
+          throw new RangeError('boom failed');
+        },
+      },
+    });
+    const onError = jest.fn();
+    const { engine } = setup({ registry, onError });
+    engine.add({ type: 'ema', id: 'ok' });
+    engine.add({ type: 'boom', id: 'bad' });
+    // When / Then
+    expect(() => engine.flush()).not.toThrow();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const error = onError.mock.calls[0]?.[0];
+    expect(error).toBeInstanceOf(RangeError);
+    expect((error as Error).message).toBe('boom failed');
+    expect(engine.getResult('ok')?.length).toBe(300);
   });
 
   it('E13: indicators without update recalculate on ticks', () => {

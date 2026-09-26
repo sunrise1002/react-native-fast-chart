@@ -1355,3 +1355,195 @@ The gate has two parts:
   above the ~300-line guideline.
 - On-device verification of the drag feel and frame times still has to
   be done on hardware.
+
+## P7 — Controller API, realtime, history pagination, settings
+
+### What was built
+
+- **Controller** (`core/ChartController.ts`, `engine/ChartControllerImpl.ts`)
+  - The full spec §21 `TradingChartController`. `TradingChartHandle`
+    extends it with the engine parts (`store`, `state`, `indicators`,
+    `panes`, `history`, `realtimeStatus`, `metrics`).
+  - Data: `setData(candles, { viewport: 'reset' | 'keepZoom' })`,
+    `appendBar`, `updateLastBar`, `upsertBar` (append / update / patch an
+    older bar, kline semantics), `prependBars`.
+  - Getters: `getBarCount`, `getBar`, `getLastBar`, `getVisibleRange`.
+  - Indicators and panes: `removeIndicator` also removes the pane it
+    leaves empty, including explicit panes. `removePane` removes its
+    indicators.
+  - Settings, realtime status and history methods (below).
+  - None of these calls re-render React (TR4 asserts zero commits over
+    100 ticks).
+- **`candles` prop diffing** (`data/CandleDiff.ts`)
+  - `diffCandles` is one binary search for the old first bar, then a
+    reference scan of the overlap. The last bar is always compared by
+    value.
+  - `applyCandleDiff` uses the cheapest store operations: `prepend`,
+    `updateLast`, `appendMany` or a tail `splice`. Anything else falls
+    back to `setData`.
+  - The simple prop path no longer resets the chart per tick.
+- **Follow mode** (`viewport/ViewportShift.ts`, `engine/StoreSync.ts`)
+  - Appends auto-scroll only when the last bar was on screen and
+    `realtime.followRealtime` is on. Otherwise the view holds still.
+  - The existing "Jump to latest" pill covers the jump back.
+- **Realtime status** (`realtime/RealtimeStatus.ts`)
+  - `'live' | 'reconnecting' | 'delayed' | 'offline'`, set by the host
+    through the controller or the `realtimeStatus` prop.
+- **Incremental indicator instrumentation** (`indicators/IndicatorStats.ts`)
+  - `engine.getComputeStats()` counts full vs incremental computations
+    per indicator id.
+  - Tests prove that 100 ticks, including rollovers, cause zero full
+    recalculations, and that a param edit recalculates only that
+    indicator.
+- **Last-price pulse** (optional, `realtime.lastPricePulse`)
+  - One animated circle at the last close, at most one pulse per
+    `pulseDurationMs`.
+  - It is only mounted when enabled.
+- **History pagination** (`history/HistoryLoader.ts`,
+  `engine/useHistoryTrigger.ts`, `components/useHistoryPagination.ts`)
+  - A UI-thread `useAnimatedReaction` detects the left edge
+    (`history.loadMoreThresholdBars`, default 50) and calls
+    `scheduleOnRN` into a single-flight loader.
+  - `onLoadMore({ before, barCount })` returns bars, a
+    `{ candles, hasMore }` result, or nothing.
+  - An empty page or `hasMore: false` means "no more history".
+  - Failures move to `error`; a retry is allowed after
+    `history.retryDelayMs`.
+  - Responses arriving after a dataset reset are dropped.
+  - A `historyLoadingIndicator` slot is shown while loading.
+- **Settings** (`settings/`)
+  - The versioned `ChartSettings` (v1) holds indicators (type, pane,
+    config, style), panes (order, ratio, minHeight, explicit), theme and
+    timeframe.
+  - `serializeChartSettings` / `deserializeChartSettings`. Deserializing
+    never throws; it drops invalid entries and reports issues with a
+    path.
+  - `applyChartSettings`, plus the controller's `getSettings` /
+    `applySettings`.
+  - No storage dependency.
+- **Headless indicator UI helpers** (`settings/IndicatorCatalog.ts`):
+  `allowedPlacements`, `placementOf`, `createIndicatorInput` (overlay →
+  price pane, pane type → automatic pane) and `parseParamValue`.
+- **Example app, new "Market" tab**
+  - `market/MockMarket.ts`: EXAMPLE ONLY, a seeded 15 ticks/s feed with
+    rollovers every ~3 s and periodic reconnects, plus paginated history
+    with 300–900 ms latency. The history is finite, so "no more
+    history" can be reached.
+  - `market/BinanceMarket.ts`: an optional public REST/WS toggle.
+  - Symbol and timeframe selectors, status badge, and an Indicators sheet
+    (add with a placement choice, edit params, remove).
+  - Save / Restore of the settings (serialized in memory), and a live
+    counter of full vs incremental indicator computations.
+
+### Key design decisions
+
+- **Prepend keeps pixels by construction.**
+  - The X model is right-anchored:
+    `x(i) = width - (barCount - 0.5 + rightOffset - i) * spacing`.
+  - Prepending `k` bars shifts every index by `k` and grows `barCount`
+    by `k`, so the terms cancel and `rightOffset` is left untouched.
+  - Only stored indices move: the crosshair index is shifted with
+    `shiftIndexForPrepend`.
+  - The math is unit-tested for any offset or spacing and for 1…10⁶
+    bars (ViewportShift P5, StoreSyncRealtime RS3, TradingChartRealtime
+    TR6).
+- **Hold-still sign fix.**
+  - The P3 note ("add the appended count to `rightOffset`") and SS5
+    had the sign wrong. Adding `k` scrolls the content by 2k bars.
+  - Holding still requires `rightOffset -= k`. This is now
+    `appendOffsetShift` and is pixel-tested (F6).
+- **The trigger key** is `resetVersion · 2³² + length` while near the
+  start, and `-1` otherwise.
+  - It fires on entering the zone, and again after each page while the
+    view is still inside it.
+  - Panning inside the zone never re-fires.
+  - Duplicate or overlapping requests are absorbed by the loader.
+- **Loader state lives in JS.** It is exposed through
+  `useSyncExternalStore`, so React renders only when `loading` flips.
+- **Reset policy.** `setData(…, { viewport })` stores the policy that
+  the store's `reset` handler reads.
+  - `keepZoom` keeps the bar spacing and scrolls to realtime.
+  - A prop-driven reset always uses `reset`.
+  - A reset hides the crosshair.
+- **`useTradingChartController` never disposes the handle.** Disposing
+  would break StrictMode's mount → unmount → mount; the chart
+  component releases all of its own subscriptions. `dispose()` is
+  available for handles created outside React.
+- **Settings restore order:**
+  1. drop stale panes;
+  2. create explicit panes;
+  3. `setIndicators` (unknown types skipped; unchanged indicators keep
+     their cache);
+  4. apply the pane order and ratios.
+
+### Public API added (main entry)
+
+- Types: `TradingChartController`, `SetDataOptions`,
+  `ViewportResetPolicy`, `UpsertBarResult`, `ChartSettingsExtras`,
+  `ChartRealtimeConfig`, `ChartHistoryConfig`.
+- Config: `realtime { followRealtime = true, lastPricePulse = false,
+pulseDurationMs = 700 }` and
+  `history { loadMoreThresholdBars = 50, retryDelayMs = 2000 }`.
+- Props: `onLoadMore`, `historyLoadingIndicator`, `realtimeStatus`. The
+  `candles` prop is now diffed.
+- Data: `diffCandles`, `applyCandleDiff`, `appendOffsetShift`,
+  `shiftIndexForPrepend`, `barsBeforeView`, `isNearHistoryStart`.
+- History: `HistoryLoader` (+ `LoadMoreHandler`, `LoadMoreRequest`,
+  `LoadMoreResult`, `HistoryLoadState`).
+- Realtime: `RealtimeStatusStore`, `isRealtimeStatus`,
+  `REALTIME_STATUSES`.
+- Settings: `CHART_SETTINGS_VERSION`, `createChartSettings`,
+  `defaultChartSettings`, `serializeChartSettings`,
+  `deserializeChartSettings`, `settingsToIndicatorInputs`,
+  `applyChartSettings`.
+- Catalog: `allowedPlacements`, `placementOf`, `createIndicatorInput`,
+  `parseParamValue`.
+- Stats and pulse: `IndicatorComputeStats`, `pulseRadius`,
+  `pulseOpacity`, and the `PULSE_*` constants.
+
+### Tests
+
+- New suites, each with a perspective table and Given / When / Then:
+  CandleDiff, ViewportShift, HistoryLoader, RealtimeStatus,
+  IndicatorStats, LastPricePulse, IndicatorCatalog, ChartSettings,
+  StoreSyncRealtime, ChartControllerP7 and TradingChartRealtime.
+- **Counts**: 1725 tests in 89 suites (P6: 1497).
+  - Coverage: 99.9 % statements, 99.53 % branches.
+  - Every new pure module is at 100 %.
+- **Remaining uncovered branches:**
+  - `TradingChart.tsx` line 75: the `config` default.
+  - `LastPricePulseNode` line 58: the theme color fallback.
+
+### Manual test — prepend without a jump (device)
+
+1. Open **Market** (Mock). Pinch to a mid zoom and long-press a candle
+   so the crosshair is pinned on a recognizable bar.
+2. Pan slowly left until the loading spinner appears at the left edge.
+3. When the page lands (300–900 ms), the pinned candle and every visible
+   candle must not move by even a pixel. The crosshair must stay on the
+   same candle, and panning continues seamlessly.
+4. Keep panning to the start of the mock history (~6000 bars). Requests
+   stop ("no more history") and the rubber band stops at bar 0.
+5. While scrolled back, watch the live feed. New bars must not move the
+   view. Tap **Jump to latest**; at the right edge the chart follows
+   rollovers.
+6. Switch symbol and timeframe. The zoom is kept (`keepZoom`), the view
+   jumps to realtime, no stale page is merged, and the status badge
+   cycles `offline → live`.
+
+### Known limitations / follow-ups
+
+- A fling's decay clamp still uses the left bound from before a
+  prepend. A fling that is running when a page lands can stop a few
+  bars early. It is harmless: the user can pan again.
+- Interior bars mutated in place (same object reference) are not
+  detected by the prop diff. Update immutably or use the controller.
+- After a pagination error, the edge trigger re-fires only when the
+  series changes. `loadMoreHistory()` retries manually.
+- Automatic panes do not restore `minHeight` from settings; they use
+  the default.
+- The Binance source is best effort: there is no backoff beyond a
+  2 s reconnect and no rate-limit handling.
+- On-device verification of the manual test above is still pending.
+- `ChartControllerImpl.ts` is ~317 lines, slightly above the guideline;
+  it is mostly one-line delegations.

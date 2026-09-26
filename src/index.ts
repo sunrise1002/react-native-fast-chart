@@ -202,6 +202,7 @@ export {
   type LinePoint,
   type MultiLineResult,
   type PriceSource,
+  type SeriesSource,
 } from './indicators/Indicator';
 export {
   indicatorScale,
@@ -214,6 +215,7 @@ export {
   type IndicatorScaleKind,
   type IndicatorScaleSpec,
   type IndicatorSeriesDescriptor,
+  type IndicatorValueFormat,
 } from './indicators/IndicatorRegistry';
 export {
   formatIndicatorLabel,

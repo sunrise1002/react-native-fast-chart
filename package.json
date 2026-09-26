@@ -35,7 +35,8 @@
     "format": "prettier --write \"**/*.{js,ts,tsx,json,md}\"",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "bench": "node --experimental-transform-types --no-warnings --import ./benchmarks/register.mjs benchmarks/run.ts"
+    "bench": "node --experimental-transform-types --no-warnings --import ./benchmarks/register.mjs benchmarks/run.ts",
+    "bench:skia": "node --experimental-transform-types --no-warnings --import ./benchmarks/register.mjs benchmarks/skia.bench.ts"
   },
   "keywords": [
     "react-native",

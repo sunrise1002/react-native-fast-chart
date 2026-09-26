@@ -7,6 +7,7 @@
 import { runDataBenchmarks } from './data.bench';
 import { sink } from './harness';
 import { runIndicatorBenchmarks } from './indicators.bench';
+import { runPerfBenchmarks } from './perf.bench';
 import { runRenderBenchmarks } from './render.bench';
 import { runViewportBenchmarks } from './viewport.bench';
 
@@ -15,4 +16,5 @@ runDataBenchmarks();
 runViewportBenchmarks();
 runRenderBenchmarks();
 runIndicatorBenchmarks();
+runPerfBenchmarks();
 console.log(`\n(sink ${sink() !== 0 ? 'ok' : 'empty'})`);

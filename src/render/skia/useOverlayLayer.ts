@@ -73,16 +73,32 @@ export function useOverlayLayer(
   barMs: SharedValue<number>,
   style: OverlayStyle
 ): { crosshair: SharedValue<SkPicture>; legend: SharedValue<SkPicture> } {
+  const { timeZone } = style;
+  // Reused per crosshair frame (P8 allocation audit).
   const resources = useMemo(
-    () => ({ crosshair: Skia.PictureRecorder(), empty: emptyPicture() }),
-    []
+    () => ({
+      crosshair: Skia.PictureRecorder(),
+      empty: emptyPicture(),
+      frame: createCrosshairFrame(),
+      time: { width: 0, barSpacing: 0, rightOffset: 0, barCount: 0 },
+      price: {
+        mode: 'linear' as PriceScaleSnapshot['mode'],
+        top: 0,
+        height: 0,
+        min: NaN,
+        max: NaN,
+      },
+      zone: createOffsetResolver(timeZone),
+      utc: createOffsetResolver('utc'),
+    }),
+    [timeZone]
   );
   const { series, barSpacing, rightOffset, plotWidth, plotHeight } = state;
   const { priceMin, priceMax, priceAxisWidth } = state;
   const { stackHeight, paneLayout } = state;
   const { crosshairIndex, crosshairY, crosshairOpacity } = state;
   const { font, paints, pixelRatio, timeAxisHeight } = style;
-  const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
+  const { pricePrecision, thousandsSeparator: sep } = style;
   const { paneScales } = style;
   const panes = style.panes ?? NO_PANES;
   const { font: skFont, glyphs, metrics, lineHeight } = font;
@@ -96,7 +112,8 @@ export function useOverlayLayer(
       plotWidth,
       barSpacing,
       rightOffset,
-      data.length
+      data.length,
+      resources.time
     );
     const layout = paneLayout.value;
     const fingerY = crosshairY.value;
@@ -106,7 +123,8 @@ export function useOverlayLayer(
     let price: PriceScaleSnapshot = framePriceScale(
       plotHeight,
       priceMin,
-      priceMax
+      priceMax,
+      resources.price
     );
     let valueDecimals = displayDecimals(pricePrecision, lastClose);
     let compact = false;
@@ -136,7 +154,7 @@ export function useOverlayLayer(
               max: 1,
             };
     }
-    const ch = createCrosshairFrame();
+    const ch = resources.frame;
     if (
       !computeCrosshair(
         data,
@@ -196,7 +214,7 @@ export function useOverlayLayer(
 
     // Time label on the time axis.
     const ms = barMs.value;
-    const resolver = createOffsetResolver(ms >= MS_PER_DAY ? 'utc' : timeZone);
+    const resolver = ms >= MS_PER_DAY ? resources.utc : resources.zone;
     const timeText = formatDateTime(ch.time + offsetAt(resolver, ch.time), ms);
     const width = measureText(glyphs, timeText) + 2 * AXIS_LABEL_PADDING;
     const left = clampSpan(ch.x, width, 0, time.width);

@@ -292,10 +292,85 @@ export {
   type IndicatorLegendLayout,
 } from './render/overlays/IndicatorLegendRenderer';
 export {
+  atrModule,
+  trueRange,
+  type AtrConfig,
+} from './indicators/builtins/Atr';
+export {
+  MACD_HISTOGRAM,
+  MACD_HISTOGRAM_COLORS,
+  MACD_LINE,
+  MACD_SIGNAL,
+  macdModule,
+  type MacdConfig,
+} from './indicators/builtins/Macd';
+export {
+  rsiFromAverages,
+  rsiModule,
+  type RsiConfig,
+} from './indicators/builtins/Rsi';
+export {
+  VOLUME_MA,
+  VOLUME_VALUE,
+  volumeModule,
+  type VolumeConfig,
+} from './indicators/builtins/Volume';
+export {
+  indicatorScale,
+  type IndicatorGuides,
+  type IndicatorScaleKind,
+  type IndicatorScaleSpec,
+} from './indicators/IndicatorRegistry';
+export type { HistogramColorMode } from './indicators/Indicator';
+export {
+  buildHistogramGeometry,
+  histogramBucket,
+  histogramBucketCount,
+  type HistogramSink,
+} from './render/indicators/HistogramGeometry';
+export { formatIndicatorValue } from './render/overlays/IndicatorLegendRenderer';
+
+// Panes (P6): model, manager, layout, scales, render specs
+export {
+  DEFAULT_INDICATOR_PANE_MIN_HEIGHT,
+  DEFAULT_INDICATOR_PANE_RATIO,
+  DEFAULT_PRICE_PANE_MIN_HEIGHT,
+  DEFAULT_PRICE_PANE_RATIO,
+  MAX_PANE_RATIO,
+  MIN_PANE_RATIO,
   PRICE_PANE_ID,
   type PaneDefinition,
+  type PaneInput,
   type PaneType,
 } from './panes/Pane';
+export { PaneManager, type PaneIndicatorRef } from './panes/PaneManager';
+export {
+  computePaneLayout,
+  dragSeparator,
+  hitTestSeparator,
+  paneIndexAt,
+  type PaneLayoutFrame,
+  type PaneLayoutSpec,
+} from './panes/PaneLayout';
+export {
+  computePaneRange,
+  FIXED_SCALE_PADDING,
+  PANE_SCALE_PADDING,
+  VOLUME_SCALE_HEADROOM,
+} from './panes/PaneScale';
+export {
+  DEFAULT_PANE_FORMAT,
+  resolvePaneSpecs,
+  type PaneGuideSpec,
+  type PaneRenderSpec,
+  type PaneValueFormat,
+} from './render/panes/PaneRenderSpec';
+export {
+  resolveIndicatorDrawSpec,
+  type HistogramSpec,
+  type IndicatorDrawSpec,
+} from './render/indicators/OverlayRenderSpec';
+export { PANE_RESIZE_TEST_ID } from './interaction/usePaneResizeGesture';
 
 // Data validation
 export {

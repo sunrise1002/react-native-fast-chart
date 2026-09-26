@@ -98,6 +98,8 @@ export const PaintStyle = Object.freeze({ Fill: 0, Stroke: 1 });
 export type PaintStyle = (typeof PaintStyle)[keyof typeof PaintStyle];
 export const StrokeCap = Object.freeze({ Butt: 0, Round: 1, Square: 2 });
 export type StrokeCap = (typeof StrokeCap)[keyof typeof StrokeCap];
+export const ClipOp = Object.freeze({ Difference: 0, Intersect: 1 });
+export type ClipOp = (typeof ClipOp)[keyof typeof ClipOp];
 export const StrokeJoin = Object.freeze({ Bevel: 0, Miter: 1, Round: 2 });
 export type StrokeJoin = (typeof StrokeJoin)[keyof typeof StrokeJoin];
 
@@ -163,7 +165,11 @@ export type FakeDrawOp =
       rect: FakeRect;
       paint: FakePaint;
     }
-  | { op: 'path'; path: FakePath; paint: FakePaint };
+  | { op: 'path'; path: FakePath; paint: FakePaint }
+  | { op: 'rect'; rect: FakeRect; paint: FakePaint }
+  | { op: 'clip'; rect: FakeRect }
+  | { op: 'save' }
+  | { op: 'restore' };
 
 export class FakePicture {
   constructor(readonly ops: readonly FakeDrawOp[]) {}
@@ -190,6 +196,22 @@ export class FakeCanvas {
 
   drawPath(path: FakePath, paint: FakePaint) {
     this.ops.push({ op: 'path', path, paint });
+  }
+
+  drawRect(rect: FakeRect, paint: FakePaint) {
+    this.ops.push({ op: 'rect', rect: { ...rect }, paint });
+  }
+
+  clipRect(rect: FakeRect) {
+    this.ops.push({ op: 'clip', rect: { ...rect } });
+  }
+
+  save() {
+    this.ops.push({ op: 'save' });
+  }
+
+  restore() {
+    this.ops.push({ op: 'restore' });
   }
 }
 

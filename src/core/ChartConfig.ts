@@ -19,6 +19,14 @@ export interface ChartLayoutConfig {
   timeAxisHeight: number;
   /** Empty space right of the last bar, in bars. */
   rightOffsetBars: number;
+  /**
+   * Share of the price pane's height (bottom) used by indicators with
+   * their own scale placed on the price pane — e.g. a volume overlay
+   * (`paneId: 'price'`). `(0, 1]`.
+   */
+  overlayScaleHeightRatio: number;
+  /** Touch slop around pane separators for resizing, dp. */
+  paneSeparatorHitSlop: number;
 }
 
 export interface ChartViewportConfig {
@@ -44,6 +52,8 @@ export interface ChartInteractionConfig {
   panEnabled: boolean;
   pinchEnabled: boolean;
   crosshairEnabled: boolean;
+  /** Drag pane separators to resize panes. */
+  paneResizeEnabled: boolean;
 }
 
 /** Axis labels and number / time formatting (spec §19, Phase 19.1–19.3). */
@@ -103,6 +113,8 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     priceAxisWidth: 64,
     timeAxisHeight: 24,
     rightOffsetBars: 5,
+    overlayScaleHeightRatio: 0.2,
+    paneSeparatorHitSlop: 12,
   }),
   viewport: Object.freeze({
     initialBarSpacing: 8,
@@ -118,6 +130,7 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     panEnabled: true,
     pinchEnabled: true,
     crosshairEnabled: true,
+    paneResizeEnabled: true,
   }),
   axes: Object.freeze({
     pricePrecision: null,

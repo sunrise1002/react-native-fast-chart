@@ -27,7 +27,7 @@ export interface IndicatorDrawList {
   legendPaints: SkPaint[];
 }
 
-function colorPaint(color: ColorValue, opacity: number): SkPaint {
+export function colorPaint(color: ColorValue, opacity: number): SkPaint {
   const paint = Skia.Paint();
   paint.setAntiAlias(true);
   paint.setColor(Skia.Color(color));
@@ -35,7 +35,7 @@ function colorPaint(color: ColorValue, opacity: number): SkPaint {
   return paint;
 }
 
-function strokePaint(color: ColorValue, width: number, opacity: number) {
+export function strokePaint(color: ColorValue, width: number, opacity: number) {
   const paint = colorPaint(color, opacity);
   paint.setStyle(PaintStyle.Stroke);
   paint.setStrokeWidth(width);
@@ -44,9 +44,17 @@ function strokePaint(color: ColorValue, width: number, opacity: number) {
   return paint;
 }
 
+/** Legend number format applied to every item of a draw list. */
+export interface LegendFormat {
+  /** Fixed decimals, `-1` for the chart's price decimals. */
+  decimals: number;
+  compact: boolean;
+}
+
 /** Creates the paints once per spec change (JS thread, never per frame). */
 export function createIndicatorDrawList(
-  specs: readonly OverlayRenderSpec[]
+  specs: readonly OverlayRenderSpec[],
+  format?: LegendFormat
 ): IndicatorDrawList {
   const legendPaints: SkPaint[] = [];
   const items: IndicatorDrawItem[] = [];
@@ -67,6 +75,8 @@ export function createIndicatorDrawList(
     legend.push({
       id: spec.id,
       label: spec.label,
+      decimals: format?.decimals ?? -1,
+      compact: format?.compact ?? false,
       values: spec.legend.map((v) => {
         legendPaints.push(colorPaint(v.color, 1));
         return {

@@ -12,6 +12,8 @@ import {
   IndicatorEngine,
   type IndicatorPatch,
 } from '../indicators/IndicatorEngine';
+import type { PaneDefinition, PaneInput } from '../panes/Pane';
+import { PaneManager } from '../panes/PaneManager';
 import {
   createChartMetrics,
   type ChartMetrics,
@@ -33,8 +35,8 @@ import {
  * Chart handle implemented in P3: data entry points, viewport commands
  * (the viewport subset of `TradingChartController`, spec §21) and
  * UI-thread state for host overlays, plus the P5 indicator methods (spec
- * §21 `addIndicator` / `removeIndicator` / `updateIndicator`). Pane
- * methods arrive with P6–P7.
+ * §21 `addIndicator` / `removeIndicator` / `updateIndicator`) and the P6
+ * pane methods (spec §12.2, §21 `addPane` / `removePane`).
  */
 export interface TradingChartHandle {
   /** JS-thread data store (source of truth). */
@@ -47,6 +49,11 @@ export interface TradingChartHandle {
   readonly metrics: ChartMetrics;
   /** Indicator engine (registry, results, entries) bound to `store`. */
   readonly indicators: IndicatorEngine;
+  /**
+   * Pane list (price pane first). Indicators are assigned by their
+   * `paneId`; an unknown id creates an automatic pane.
+   */
+  readonly panes: PaneManager;
 
   /** Replaces the dataset (normalized); resets the viewport. */
   setData(candles: readonly Candle[]): CandleIssue[];
@@ -71,6 +78,25 @@ export interface TradingChartHandle {
   /** Active indicators in display order. */
   getIndicators(): readonly IndicatorEntry[];
 
+  /**
+   * Adds an explicit (possibly empty) pane below the price pane; returns
+   * its id. Assign indicators with `paneId`. Throws on a duplicate id.
+   */
+  addPane(input?: PaneInput): string;
+  /**
+   * Removes a pane and its indicators; `false` for the price pane or an
+   * unknown id.
+   */
+  removePane(id: string): boolean;
+  /** Moves a pane (clamped below the price pane); `false` when invalid. */
+  movePane(id: string, index: number): boolean;
+  /** Sets a pane's height weight; `false` when unknown / invalid. */
+  setPaneHeightRatio(id: string, ratio: number): boolean;
+  /** Replaces all height weights (pane order); `false` on a length mismatch. */
+  resizePanes(ratios: readonly number[]): boolean;
+  /** Panes in display order. */
+  getPanes(): readonly PaneDefinition[];
+
   /** Scrolls to the latest bar (animated by default). */
   scrollToRealtime(animated?: boolean): void;
   /** Restores the default zoom at realtime (animated by default). */
@@ -91,6 +117,7 @@ class ChartController implements ChartControllerInternals {
   options: ViewportOptions;
   metrics: ChartMetrics;
   readonly indicators: IndicatorEngine;
+  readonly panes = new PaneManager();
 
   constructor(config: ChartConfig) {
     this.state = createChartSharedState(config);
@@ -99,6 +126,9 @@ class ChartController implements ChartControllerInternals {
     this.indicators = new IndicatorEngine(this.store, {
       getProfiler: () => this.metrics.channel('indicator'),
     });
+    const syncPanes = () => this.panes.sync(this.indicators.getEntries());
+    syncPanes();
+    this.indicators.subscribeEntries(syncPanes);
   }
 
   get isAtRealtime(): SharedValue<boolean> {
@@ -146,6 +176,38 @@ class ChartController implements ChartControllerInternals {
 
   getIndicators(): readonly IndicatorEntry[] {
     return this.indicators.getEntries();
+  }
+
+  addPane(input?: PaneInput): string {
+    return this.panes.add(input);
+  }
+
+  removePane(id: string): boolean {
+    const pane = this.panes.getPane(id);
+    if (!pane || pane.type === 'price') {
+      return false;
+    }
+    for (const indicatorId of pane.indicatorIds) {
+      this.indicators.remove(indicatorId);
+    }
+    this.panes.remove(id);
+    return true;
+  }
+
+  movePane(id: string, index: number): boolean {
+    return this.panes.move(id, index);
+  }
+
+  setPaneHeightRatio(id: string, ratio: number): boolean {
+    return this.panes.setHeightRatio(id, ratio);
+  }
+
+  resizePanes(ratios: readonly number[]): boolean {
+    return this.panes.resize(ratios);
+  }
+
+  getPanes(): readonly PaneDefinition[] {
+    return this.panes.getPanes();
   }
 
   scrollToRealtime(animated = true): void {

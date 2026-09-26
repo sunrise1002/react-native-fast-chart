@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { MS_PER_DAY } from '../../axes/CivilTime';
 import { clampSpan } from '../../axes/LabelCollision';
-import { displayDecimals, formatPrice } from '../../axes/PriceFormat';
+import { displayDecimals } from '../../axes/PriceFormat';
 import { measureText } from '../../axes/TextMetrics';
 import { formatDateTime } from '../../axes/TimeFormat';
 import {
@@ -12,32 +12,27 @@ import {
   type ChartTimeZone,
 } from '../../axes/TimeZone';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
+import { paneIndexAt } from '../../panes/PaneLayout';
+import type { PriceScaleSnapshot } from '../../viewport/PriceScale';
 import {
   computeCrosshair,
   createCrosshairFrame,
 } from '../overlays/CrosshairRenderer';
-import {
-  layoutOhlcHeader,
-  OHLC_STYLE_CAPTION,
-  OHLC_STYLE_UP,
-} from '../overlays/OHLCHeaderRenderer';
-import {
-  INDICATOR_LEGEND_STYLE_CAPTION,
-  INDICATOR_LEGEND_STYLE_VALUE,
-  layoutIndicatorLegend,
-} from '../overlays/IndicatorLegendRenderer';
+import { formatIndicatorValue } from '../overlays/IndicatorLegendRenderer';
 import { centeredBaseline } from '../RenderModel';
 import { framePriceScale, frameTimeScale } from './frameScales';
 import type { IndicatorDrawList } from './IndicatorPaints';
+import type { PaneDrawItem } from './PanePaints';
 import type { ChartFont, ChartPaints } from './SkiaResources';
 import {
   AXIS_LABEL_PADDING,
   BADGE_PADDING_Y,
   BADGE_RADIUS,
 } from './useAxesLayer';
+import { useLegendLayer } from './useLegendLayer';
+import type { PaneScaleFrame } from './usePaneScales';
 
-/** Legend inset from the plot's top-left corner, dp. */
-export const LEGEND_INSET = 8;
+export { LEGEND_INSET } from './useLegendLayer';
 
 export interface OverlayStyle {
   font: ChartFont;
@@ -51,10 +46,12 @@ export interface OverlayStyle {
   showLegendVolume: boolean;
   /** Overlay indicators listed under the OHLC row (with their values). */
   indicators?: IndicatorDrawList;
+  /** Indicator panes (legends, crosshair value labels). */
+  panes?: readonly PaneDrawItem[];
+  paneScales?: SharedValue<PaneScaleFrame>;
 }
 
-const EMPTY_LEGEND: IndicatorDrawList['legend'] = [];
-const EMPTY_PAINTS: IndicatorDrawList['legendPaints'] = [];
+const NO_PANES: readonly PaneDrawItem[] = [];
 
 function emptyPicture(): SkPicture {
   const recorder = Skia.PictureRecorder();
@@ -63,11 +60,13 @@ function emptyPicture(): SkPicture {
 }
 
 /**
- * Crosshair picture (dashed lines + price / time axis labels) and OHLC
- * legend picture, rebuilt on the UI thread from shared values only
- * (spec §18.3: no React state per move). The crosshair picture depends on
- * the crosshair + viewport values; the legend only on the data and the
- * crosshair bar, so panning without a crosshair doesn't re-record it.
+ * Crosshair picture and legend picture, rebuilt on the UI thread from
+ * shared values only (spec §18.3: no React state per move). The vertical
+ * line spans every pane; the horizontal line and the value label belong
+ * to the pane under the finger, on that pane's scale and value format
+ * (spec §12: shared time scale, independent Y scales). The legend only
+ * depends on the data and the crosshair bar, so panning without a
+ * crosshair doesn't re-record it.
  */
 export function useOverlayLayer(
   state: ChartSharedState,
@@ -75,22 +74,17 @@ export function useOverlayLayer(
   style: OverlayStyle
 ): { crosshair: SharedValue<SkPicture>; legend: SharedValue<SkPicture> } {
   const resources = useMemo(
-    () => ({
-      crosshair: Skia.PictureRecorder(),
-      legend: Skia.PictureRecorder(),
-      empty: emptyPicture(),
-    }),
+    () => ({ crosshair: Skia.PictureRecorder(), empty: emptyPicture() }),
     []
   );
   const { series, barSpacing, rightOffset, plotWidth, plotHeight } = state;
   const { priceMin, priceMax, priceAxisWidth } = state;
+  const { stackHeight, paneLayout } = state;
   const { crosshairIndex, crosshairY, crosshairOpacity } = state;
   const { font, paints, pixelRatio, timeAxisHeight } = style;
   const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
-  const { showLegend, showLegendVolume } = style;
-  const legendItems = style.indicators?.legend ?? EMPTY_LEGEND;
-  const legendPaints = style.indicators?.legendPaints ?? EMPTY_PAINTS;
-  const { indicators } = state;
+  const { paneScales } = style;
+  const panes = style.panes ?? NO_PANES;
   const { font: skFont, glyphs, metrics, lineHeight } = font;
 
   const crosshair = useDerivedValue<SkPicture>(() => {
@@ -104,7 +98,44 @@ export function useOverlayLayer(
       rightOffset,
       data.length
     );
-    const price = framePriceScale(plotHeight, priceMin, priceMax);
+    const layout = paneLayout.value;
+    const fingerY = crosshairY.value;
+    const lastClose = data.close[data.offset + data.length - 1] as number;
+
+    // Scale / format of the pane under the finger.
+    let price: PriceScaleSnapshot = framePriceScale(
+      plotHeight,
+      priceMin,
+      priceMax
+    );
+    let valueDecimals = displayDecimals(pricePrecision, lastClose);
+    let compact = false;
+    let hasScale = true;
+    const pane = paneIndexAt(layout, fingerY);
+    if (pane > 0) {
+      const id = layout.ids[pane] as string;
+      let scale: PriceScaleSnapshot | undefined;
+      for (let j = 0; j < panes.length; j++) {
+        const item = panes[j] as PaneDrawItem;
+        if (!item.overlay && item.paneId === id) {
+          scale = paneScales?.value.scales[j];
+          valueDecimals = item.format.decimals;
+          compact = item.format.compact;
+          break;
+        }
+      }
+      hasScale = scale !== undefined && Number.isFinite(scale.min);
+      price =
+        scale !== undefined && hasScale
+          ? scale
+          : {
+              mode: 'linear',
+              top: layout.tops[pane] as number,
+              height: layout.heights[pane] as number,
+              min: 0,
+              max: 1,
+            };
+    }
     const ch = createCrosshairFrame();
     if (
       !computeCrosshair(
@@ -112,47 +143,56 @@ export function useOverlayLayer(
         time,
         price,
         crosshairIndex.value,
-        crosshairY.value,
+        fingerY,
         pixelRatio,
         ch
       )
     ) {
       return resources.empty;
     }
+    const stack = stackHeight.value > 0 ? stackHeight.value : price.height;
     const canvas = resources.crosshair.beginRecording();
     const line = paints.crosshairLine;
-    canvas.drawLine(ch.x, 0, ch.x, price.height, line);
-    canvas.drawLine(0, ch.y, time.width, ch.y, line);
-
+    canvas.drawLine(ch.x, 0, ch.x, stack, line);
     const boxHeight = lineHeight + 2 * BADGE_PADDING_Y;
-    // Price label on the price axis.
-    const lastClose = data.close[data.offset + data.length - 1] as number;
-    const priceText = formatPrice(
-      ch.price,
-      displayDecimals(pricePrecision, lastClose),
-      sep
-    );
-    const top = clampSpan(ch.y, boxHeight, 0, price.height);
-    canvas.drawRRect(
-      {
-        rect: {
-          x: time.width,
-          y: top,
-          width: priceAxisWidth.value,
-          height: boxHeight,
+
+    if (hasScale) {
+      canvas.drawLine(0, ch.y, time.width, ch.y, line);
+      // Value label on the pane's axis.
+      const text = formatIndicatorValue(
+        ch.price,
+        valueDecimals,
+        compact,
+        displayDecimals(NaN, ch.price),
+        sep
+      );
+      const top = clampSpan(
+        ch.y,
+        boxHeight,
+        price.top,
+        price.top + price.height
+      );
+      canvas.drawRRect(
+        {
+          rect: {
+            x: time.width,
+            y: top,
+            width: priceAxisWidth.value,
+            height: boxHeight,
+          },
+          rx: BADGE_RADIUS,
+          ry: BADGE_RADIUS,
         },
-        rx: BADGE_RADIUS,
-        ry: BADGE_RADIUS,
-      },
-      paints.crosshairLabel
-    );
-    canvas.drawText(
-      priceText,
-      time.width + AXIS_LABEL_PADDING,
-      centeredBaseline(top + boxHeight / 2, metrics),
-      paints.crosshairText,
-      skFont
-    );
+        paints.crosshairLabel
+      );
+      canvas.drawText(
+        text,
+        time.width + AXIS_LABEL_PADDING,
+        centeredBaseline(top + boxHeight / 2, metrics),
+        paints.crosshairText,
+        skFont
+      );
+    }
 
     // Time label on the time axis.
     const ms = barMs.value;
@@ -160,7 +200,7 @@ export function useOverlayLayer(
     const timeText = formatDateTime(ch.time + offsetAt(resolver, ch.time), ms);
     const width = measureText(glyphs, timeText) + 2 * AXIS_LABEL_PADDING;
     const left = clampSpan(ch.x, width, 0, time.width);
-    const labelTop = price.height + (timeAxisHeight - boxHeight) / 2;
+    const labelTop = stack + (timeAxisHeight - boxHeight) / 2;
     canvas.drawRRect(
       {
         rect: { x: left, y: labelTop, width, height: boxHeight },
@@ -179,88 +219,15 @@ export function useOverlayLayer(
     return resources.crosshair.finishRecordingAsPicture();
   });
 
-  const legend = useDerivedValue<SkPicture>(() => {
-    const data = series.value;
-    if (!showLegend || data.length === 0) {
-      return resources.empty;
-    }
-    const index =
-      crosshairOpacity.value > 0 && crosshairIndex.value >= 0
-        ? crosshairIndex.value
-        : data.length - 1;
-    const canvas = resources.legend.beginRecording();
-    const rowHeight = lineHeight + 2;
-    const baselineOffset = centeredBaseline(rowHeight / 2, metrics);
-    const decimals = displayDecimals(
-      pricePrecision,
-      data.close[data.offset + data.length - 1] as number
-    );
-    const lines = layoutOhlcHeader(
-      data,
-      index,
-      {
-        x: LEGEND_INSET,
-        y: LEGEND_INSET,
-        lineHeight: rowHeight,
-        baselineOffset,
-        maxWidth: plotWidth.value - LEGEND_INSET,
-        captionGap: 3,
-        groupGap: 8,
-        glyphs,
-        decimals,
-        thousandsSeparator: sep,
-        showVolume: showLegendVolume,
-      },
-      {
-        text(text, x, baseline, textStyle) {
-          canvas.drawText(
-            text,
-            x,
-            baseline,
-            textStyle === OHLC_STYLE_CAPTION
-              ? paints.axisText
-              : textStyle === OHLC_STYLE_UP
-                ? paints.legendUp
-                : paints.legendDown,
-            skFont
-          );
-        },
-      }
-    );
-    if (legendItems.length > 0) {
-      layoutIndicatorLegend(
-        legendItems,
-        indicators.value,
-        data,
-        index,
-        {
-          x: LEGEND_INSET,
-          y: LEGEND_INSET + lines * rowHeight,
-          lineHeight: rowHeight,
-          baselineOffset,
-          maxWidth: plotWidth.value - LEGEND_INSET,
-          gap: 6,
-          glyphs,
-          decimals,
-          thousandsSeparator: sep,
-        },
-        {
-          text(text, x, baseline, textStyle) {
-            canvas.drawText(
-              text,
-              x,
-              baseline,
-              textStyle === INDICATOR_LEGEND_STYLE_CAPTION
-                ? paints.axisText
-                : (legendPaints[textStyle - INDICATOR_LEGEND_STYLE_VALUE] ??
-                    paints.axisText),
-              skFont
-            );
-          },
-        }
-      );
-    }
-    return resources.legend.finishRecordingAsPicture();
+  const legend = useLegendLayer(state, {
+    font,
+    paints,
+    pricePrecision,
+    thousandsSeparator: sep,
+    showLegend: style.showLegend,
+    showLegendVolume: style.showLegendVolume,
+    indicators: style.indicators,
+    panes,
   });
 
   return { crosshair, legend };

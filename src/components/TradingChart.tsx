@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import {
+  Gesture,
   GestureDetector,
   type ComposedGesture,
   type GestureType,
@@ -29,12 +30,14 @@ import {
 } from '../engine/ChartControllerImpl';
 import { toViewportOptions } from '../engine/ChartSharedState';
 import { connectIndicatorsToUi } from '../engine/IndicatorSync';
+import { connectPanesToUi } from '../engine/PaneSync';
 import { connectStoreToUi } from '../engine/StoreSync';
 import type { IndicatorInput } from '../indicators/Indicator';
 import {
   overlayAutoScaleRefs,
   resolveOverlaySpecs,
 } from '../render/indicators/OverlayRenderSpec';
+import { resolvePaneSpecs } from '../render/panes/PaneRenderSpec';
 import { useChartReactions } from '../engine/useChartReactions';
 import { resizeCanvas } from '../engine/LayoutActions';
 import {
@@ -43,6 +46,7 @@ import {
 } from '../interaction/useCrosshairCallback';
 import { useChartGestures } from '../interaction/useChartGestures';
 import { useCrosshairGesture } from '../interaction/useCrosshairGesture';
+import { usePaneResizeGesture } from '../interaction/usePaneResizeGesture';
 import { SkiaChartCanvas } from '../render/skia/SkiaChartCanvas';
 import type { ChartTheme } from '../theme/ChartTheme';
 import { defaultDarkTheme } from '../theme/defaultDarkTheme';
@@ -71,7 +75,9 @@ export interface TradingChartProps {
    * Declarative indicator set (compared by value; matched by id, default
    * `${type}-${index}`). Omit it to manage indicators imperatively through
    * the controller (`addIndicator` …). Overlays (`sma`, `ema`, `wma`,
-   * `bollinger`) draw on the price pane with legend values.
+   * `bollinger`) draw on the price pane with legend values; pane
+   * indicators (`volume`, `rsi`, `macd`, `atr`) get their own pane below
+   * it (or set `paneId: 'price'` for a volume overlay).
    */
   indicators?: readonly IndicatorInput[];
   /** Partial config merged over `DEFAULT_CHART_CONFIG` (compared by value). */
@@ -160,6 +166,15 @@ export function TradingChart({
     () => connectIndicatorsToUi(handle.indicators, handle.state),
     [handle]
   );
+  useEffect(
+    () => connectPanesToUi(handle.panes, handle.state, () => handle.options),
+    [handle]
+  );
+  const paneManager = handle.panes;
+  const panes = useSyncExternalStore(
+    useCallback((cb: () => void) => paneManager.subscribe(cb), [paneManager]),
+    useCallback(() => paneManager.getPanes(), [paneManager])
+  );
   // React state only when the indicator set / styles change (spec §22).
   const engine = handle.indicators;
   const entries = useSyncExternalStore(
@@ -169,6 +184,10 @@ export function TradingChart({
   const overlaySpecs = useMemo(
     () => resolveOverlaySpecs(entries, resolvedTheme.indicatorPalette),
     [entries, resolvedTheme]
+  );
+  const paneSpecs = useMemo(
+    () => resolvePaneSpecs(entries, panes, resolvedTheme),
+    [entries, panes, resolvedTheme]
   );
   const overlayRefs = useMemo(
     () => overlayAutoScaleRefs(overlaySpecs),
@@ -187,6 +206,23 @@ export function TradingChart({
     resolved.interaction,
     crosshairGesture ?? builtInCrosshair
   );
+  const commitPaneRatios = useCallback(
+    (ratios: number[]) => {
+      handle.resizePanes(ratios);
+    },
+    [handle]
+  );
+  const paneResize = usePaneResizeGesture(
+    handle.state,
+    options,
+    resolved.interaction.paneResizeEnabled,
+    resolved.layout.paneSeparatorHitSlop,
+    commitPaneRatios
+  );
+  const composed = useMemo(
+    () => Gesture.Race(paneResize, gestures.composed),
+    [paneResize, gestures.composed]
+  );
   useCrosshairCallback(handle.state, onCrosshairChange);
 
   const { timeAxisHeight } = resolved.layout;
@@ -204,7 +240,7 @@ export function TradingChart({
   };
 
   return (
-    <GestureDetector gesture={gestures.composed}>
+    <GestureDetector gesture={composed}>
       <View
         style={[styles.container, style]}
         testID={testID}
@@ -222,6 +258,7 @@ export function TradingChart({
           pixelRatio={pixelRatio}
           profiling={resolved.debug.profiling}
           overlaySpecs={overlaySpecs}
+          paneSpecs={paneSpecs}
           getMetrics={getMetrics}
         />
       </View>

@@ -1,20 +1,13 @@
 import { Skia, type SkPath, type SkPicture } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
-import { MS_PER_DAY, MS_PER_MINUTE } from '../../axes/CivilTime';
 import { requiredAxisWidth } from '../../axes/AxisWidth';
 import { displayDecimals, formatPrice } from '../../axes/PriceFormat';
 import { createPriceTicks, generatePriceTicks } from '../../axes/PriceTicks';
 import { measureText } from '../../axes/TextMetrics';
-import { formatTimeTick } from '../../axes/TimeFormat';
-import {
-  createTimeTicks,
-  generateTimeTicks,
-  selectTimeInterval,
-} from '../../axes/TimeTicks';
-import { createOffsetResolver, type ChartTimeZone } from '../../axes/TimeZone';
+import { createTimeTicks } from '../../axes/TimeTicks';
+import type { ChartTimeZone } from '../../axes/TimeZone';
 import type { ChartSharedState } from '../../engine/ChartSharedState';
-import { getVisibleRange } from '../../viewport/VisibleRange';
 import { layoutPriceAxisLabels } from '../axes/PriceAxisRenderer';
 import { layoutTimeAxisLabels } from '../axes/TimeAxisRenderer';
 import { buildGridGeometry } from '../grid/GridGeometry';
@@ -24,7 +17,17 @@ import {
 } from '../overlays/LastPriceRenderer';
 import { centeredBaseline } from '../RenderModel';
 import { framePriceScale, frameTimeScale } from './frameScales';
+import { recordPaneAxes } from './paneAxes';
+import type { PaneDrawItem } from './PanePaints';
+import { computeTimeTicks, timeLabelSpacing, timeTickLabels } from './timeAxis';
 import type { ChartFont, ChartPaints } from './SkiaResources';
+import type { PaneScaleFrame } from './usePaneScales';
+
+const NO_PANES: readonly PaneDrawItem[] = [];
+const NO_TIME_TICKS = { positions: [] as number[], count: 0 };
+const NO_PRICE_TICKS = { values: [] as number[], count: 0 };
+
+export { TIME_LABEL_GAP_EM, timeLabelSpacing } from './timeAxis';
 
 /** Horizontal padding of price labels / badges inside the axis, dp. */
 export const AXIS_LABEL_PADDING = 6;
@@ -32,8 +35,6 @@ export const AXIS_LABEL_PADDING = 6;
 export const BADGE_PADDING_Y = 3;
 /** Corner radius of axis badges, dp. */
 export const BADGE_RADIUS = 2;
-/** Extra room between time labels, in font sizes. */
-export const TIME_LABEL_GAP_EM = 1.5;
 
 export interface AxesStyle {
   font: ChartFont;
@@ -46,6 +47,9 @@ export interface AxesStyle {
   thousandsSeparator: string;
   timeZone: ChartTimeZone;
   showLastPrice: boolean;
+  /** Indicator panes (own grid rows and axis labels). */
+  panes?: readonly PaneDrawItem[];
+  paneScales?: SharedValue<PaneScaleFrame>;
 }
 
 /** One frame of the axes layer. */
@@ -56,19 +60,6 @@ export interface AxesFrame {
   picture: SkPicture;
   /** Axis width that fits this frame's widest label, dp. */
   requiredAxisWidth: number;
-}
-
-/** Minimum spacing between time labels for the widest possible label. */
-export function timeLabelSpacing(
-  font: ChartFont,
-  withSeconds: boolean
-): number {
-  const samples = [withSeconds ? '00:00:00' : '00:00', '0000', 'May', '00'];
-  let widest = 0;
-  for (const text of samples) {
-    widest = Math.max(widest, measureText(font.glyphs, text));
-  }
-  return widest + font.size * TIME_LABEL_GAP_EM;
 }
 
 /**
@@ -91,14 +82,16 @@ export function useAxesLayer(
     () => ({
       grid: Skia.PathBuilder.Make(),
       recorder: Skia.PictureRecorder(),
+      paneTicks: createPriceTicks(),
     }),
     []
   );
   const { series, barSpacing, rightOffset, plotWidth, plotHeight } = state;
-  const { priceMin, priceMax, priceAxisWidth } = state;
+  const { priceMin, priceMax, priceAxisWidth, stackHeight } = state;
   const { font, paints, gridLineWidth, pixelRatio, timeAxisHeight } = style;
   const { pricePrecision, thousandsSeparator: sep, timeZone } = style;
-  const { showLastPrice } = style;
+  const { showLastPrice, paneScales } = style;
+  const panes = style.panes ?? NO_PANES;
   const spacing = useMemo(
     () => ({
       clock: timeLabelSpacing(font, false),
@@ -137,43 +130,45 @@ export function useAxesLayer(
     }
 
     // Time ticks (daily+ bars are calendar days: UTC dates).
-    const ms = barMs.value;
-    const withSeconds = ms < MS_PER_MINUTE;
-    const minSpacing = withSeconds ? spacing.seconds : spacing.clock;
     const timeTicks = createTimeTicks();
-    const k = selectTimeInterval(ms, time.barSpacing, minSpacing);
-    if (k >= 0) {
-      const minBars = minSpacing / time.barSpacing;
-      const range = getVisibleRange(time, Math.ceil(minBars) + 1);
-      generateTimeTicks(
-        data,
-        range.startIndex,
-        range.endIndex,
-        k,
-        createOffsetResolver(ms >= MS_PER_DAY ? 'utc' : timeZone),
-        minBars,
-        timeTicks
-      );
-    }
+    const withSeconds = computeTimeTicks(
+      data,
+      time,
+      barMs.value,
+      spacing,
+      timeZone,
+      timeTicks
+    );
 
-    // Grid.
+    // Grid: price rows in the price pane, time columns across all panes.
     grid.reset();
     const rect = { x: 0, y: 0, width: 0, height: 0 };
+    const gridSink = {
+      line(_h: boolean, x: number, y: number, w: number, h: number) {
+        rect.x = x;
+        rect.y = y;
+        rect.width = w;
+        rect.height = h;
+        grid.addRect(rect);
+      },
+    };
+    const gridOptions = { lineWidth: gridLineWidth, pixelRatio };
+    const stack = { ...price, top: 0, height: stackHeight.value };
     buildGridGeometry(
       time,
       price,
       priceTicks,
+      NO_TIME_TICKS,
+      gridOptions,
+      gridSink
+    );
+    buildGridGeometry(
+      time,
+      stack,
+      NO_PRICE_TICKS,
       timeTicks,
-      { lineWidth: gridLineWidth, pixelRatio },
-      {
-        line(_horizontal, x, y, w, h) {
-          rect.x = x;
-          rect.y = y;
-          rect.width = w;
-          rect.height = h;
-          grid.addRect(rect);
-        },
-      }
+      gridOptions,
+      gridSink
     );
 
     // Labels.
@@ -224,23 +219,27 @@ export function useAxesLayer(
         : null,
       sink
     );
-    const timeLabels: string[] = [];
-    for (let i = 0; i < timeTicks.count; i++) {
-      timeLabels.push(
-        formatTimeTick(
-          timeTicks.payload[i] as number,
-          timeTicks.weights[i] as number,
-          withSeconds
-        )
-      );
-    }
+    const timeLabels = timeTickLabels(timeTicks, withSeconds);
     layoutTimeAxisLabels(
       timeTicks,
       timeLabels,
       time,
-      { top: price.height, height: timeAxisHeight, metrics, glyphs },
+      { top: stack.height, height: timeAxisHeight, metrics, glyphs },
       sink
     );
+    const paneWidest = recordPaneAxes(panes, paneScales?.value, time, {
+      canvas,
+      grid,
+      font,
+      skFont,
+      paints,
+      gridLineWidth,
+      pixelRatio,
+      textX: axisX + AXIS_LABEL_PADDING,
+      thousandsSeparator: sep,
+      ticks: resources.paneTicks,
+    });
+    widest = Math.max(widest, paneWidest);
     if (marker.visible) {
       canvas.drawRRect(
         {

@@ -8,6 +8,12 @@ import {
   emptyUiIndicatorSet,
   type UiIndicatorSet,
 } from '../indicators/UiIndicatorSet';
+import {
+  PRICE_PANE_ID,
+  DEFAULT_PRICE_PANE_MIN_HEIGHT,
+  DEFAULT_PRICE_PANE_RATIO,
+} from '../panes/Pane';
+import type { PaneLayoutFrame, PaneLayoutSpec } from '../panes/PaneLayout';
 import type { TimeScaleOptions, TimeScaleState } from '../viewport/TimeScale';
 
 /**
@@ -51,6 +57,25 @@ export interface ChartSharedState {
   crosshairOpacity: SharedValue<number>;
   /** UI-thread copy of the indicator outputs (see `UiIndicatorSet`). */
   indicators: SharedValue<UiIndicatorSet>;
+  /**
+   * Height of the pane stack (canvas minus the time axis), dp. Panes are
+   * laid out from the top; `plotHeight` is the price pane's share.
+   */
+  stackHeight: SharedValue<number>;
+  /** Pane order / weights / minimums (mirrors the `PaneManager`). */
+  paneSpec: SharedValue<PaneLayoutSpec>;
+  /** Pane rects of `paneSpec` in `stackHeight` (price pane first). */
+  paneLayout: SharedValue<PaneLayoutFrame>;
+}
+
+/** Layout spec with only the price pane. */
+export function pricePaneSpec(): PaneLayoutSpec {
+  'worklet';
+  return {
+    ids: [PRICE_PANE_ID],
+    ratios: [DEFAULT_PRICE_PANE_RATIO],
+    minHeights: [DEFAULT_PRICE_PANE_MIN_HEIGHT],
+  };
 }
 
 /** Static viewport options captured by worklets (plain numbers only). */
@@ -60,6 +85,8 @@ export interface ViewportOptions extends TimeScaleOptions {
   realtimeRightOffset: number;
   bodyRatio: number;
   overscanBars: number;
+  /** Share of the price pane used by non-price-scaled overlays (volume). */
+  overlayScaleHeightRatio: number;
 }
 
 /** Rubber-band overshoot allowed while dragging, as a share of the plot. */
@@ -84,6 +111,14 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
     crosshairY: makeMutable(Number.NaN),
     crosshairOpacity: makeMutable(0),
     indicators: makeMutable(emptyUiIndicatorSet()),
+    stackHeight: makeMutable(0),
+    paneSpec: makeMutable(pricePaneSpec()),
+    paneLayout: makeMutable<PaneLayoutFrame>({
+      ids: [PRICE_PANE_ID],
+      tops: [0],
+      heights: [0],
+      total: 0,
+    }),
   };
 }
 
@@ -99,6 +134,7 @@ export function toViewportOptions(config: ChartConfig): ViewportOptions {
     realtimeRightOffset: layout.rightOffsetBars,
     bodyRatio: viewport.bodyRatio,
     overscanBars: viewport.overscanBars,
+    overlayScaleHeightRatio: layout.overlayScaleHeightRatio,
   };
 }
 

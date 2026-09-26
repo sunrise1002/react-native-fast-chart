@@ -1,6 +1,6 @@
 import type { Candle } from '../data/Candle';
 import type { IndicatorDefinition } from '../indicators/Indicator';
-import type { PaneDefinition } from '../panes/Pane';
+import type { PaneInput } from '../panes/Pane';
 
 /**
  * Imperative chart API (spec §21). High-frequency data (realtime ticks,
@@ -25,7 +25,7 @@ export interface TradingChartController {
   updateIndicator(id: string, patch: Partial<IndicatorDefinition>): void;
 
   /** Returns the id of the added pane. */
-  addPane(definition: PaneDefinition): string;
+  addPane(input?: PaneInput): string;
   removePane(id: string): void;
 
   scrollToRealtime(): void;

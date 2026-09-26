@@ -92,10 +92,13 @@ export interface ChartPaints {
   /** OHLC legend values (candle colors). */
   legendUp: SkPaint;
   legendDown: SkPaint;
+  /** Indicator guide levels (dashed) and the guide band fill. */
+  guideLine: SkPaint;
+  guideBand: SkPaint;
 }
 
 export function createChartPaints(theme: ChartTheme): ChartPaints {
-  const { axis, candle, crosshair, lastPrice } = theme;
+  const { axis, candle, crosshair, lastPrice, pane } = theme;
   return {
     axisText: fillPaint(axis.textColor),
     bullish: fillPaint(lastPrice.bullishColor),
@@ -116,6 +119,8 @@ export function createChartPaints(theme: ChartTheme): ChartPaints {
     crosshairText: fillPaint(crosshair.labelTextColor),
     legendUp: fillPaint(candle.bullish),
     legendDown: fillPaint(candle.bearish),
+    guideLine: dashedPaint(pane.guideColor, 1, pane.guideDash),
+    guideBand: fillPaint(pane.guideBandColor),
   };
 }
 

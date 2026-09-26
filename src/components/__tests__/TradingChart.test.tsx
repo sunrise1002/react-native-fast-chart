@@ -11,8 +11,8 @@
  * | TC2  | light theme                                 | Equivalence      | light background                          |
  * | TC3  | themeOverride.background                    | Equivalence      | override wins over theme                  |
  * | TC4  | style + testID                              | Equivalence      | forwarded, flex kept                      |
- * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 5 paths, 4 pictures, bars drawn|
- * | TC6  | grid.visible false                          | Equivalence      | 4 paths (no grid)                         |
+ * | TC5  | 1000 candles + layout                       | Equivalence      | plot size, 6 paths, 6 pictures, bars drawn|
+ * | TC6  | grid.visible false                          | Equivalence      | 5 paths (no grid)                         |
  * | TC7  | new candles array                           | Equivalence      | store replaced                            |
  * | TC8  | controller prop + ref                       | Equivalence      | ref receives that controller              |
  * | TC9  | controller.appendBar after mount            | Equivalence      | series patched on UI state                |
@@ -24,6 +24,9 @@
  * | TC15 | indicators prop new array, same value        | Boundary         | setIndicators not called again            |
  * | TC16 | indicators prop changed / emptied            | Equivalence      | set replaced / cleared                    |
  * | TC17 | indicators prop with unknown type            | Invalid          | throws (surfaced to the error boundary)   |
+ * | TC18 | RSI + MACD panes, volume overlay             | Equivalence      | panes laid out, pane + underlay drawn     |
+ * | TC19 | indicators removed                           | Boundary (empty) | automatic panes removed, price full height|
+ * | TC20 | explicit pane via controller + removePane    | Equivalence      | layout split / restored                   |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -117,7 +120,8 @@ describe('TradingChart', () => {
     expect(state.series.value.length).toBe(1000);
     expect(Number.isFinite(state.priceMin.value)).toBe(true);
     const paths = view.UNSAFE_root.findAllByType('SkiaPath' as never);
-    expect(paths).toHaveLength(5);
+    // Grid, 4 candle paths, pane separators.
+    expect(paths).toHaveLength(6);
     const wickRects = paths
       .slice(1, 3)
       .reduce(
@@ -125,9 +129,9 @@ describe('TradingChart', () => {
         0
       );
     expect(wickRects).toBeGreaterThan(40);
-    // Indicators, axes, legend, crosshair.
+    // Underlay, indicators, panes, axes, legend, crosshair.
     expect(view.UNSAFE_root.findAllByType('SkiaPicture' as never)).toHaveLength(
-      4
+      6
     );
   });
 
@@ -140,7 +144,7 @@ describe('TradingChart', () => {
     // When
     const view = await render(<TradingChart theme={theme} />);
     // Then
-    expect(view.UNSAFE_root.findAllByType('SkiaPath' as never)).toHaveLength(4);
+    expect(view.UNSAFE_root.findAllByType('SkiaPath' as never)).toHaveLength(5);
   });
 
   it('TC7: replaces the data when the candles prop changes', async () => {
@@ -282,8 +286,9 @@ describe('TradingChart', () => {
           (o) => o.op === 'path'
         ).length
     );
-    // Tree order: indicators (inside the plot clip), axes, legend, crosshair.
-    expect(ops).toEqual([5, 0, 0, 0]);
+    // Tree order: underlay + indicators (inside the plot clip), panes,
+    // axes, legend, crosshair.
+    expect(ops).toEqual([0, 5, 0, 0, 0, 0]);
   });
 
   it('TC15 / TC16: compares the prop by value', async () => {
@@ -321,5 +326,92 @@ describe('TradingChart', () => {
       await render(<TradingChart indicators={[{ type: 'nope' }]} />);
     }).rejects.toThrow('Unknown indicator type "nope"');
     error.mockRestore();
+  });
+
+  it('TC18: lays out indicator panes and the volume overlay', async () => {
+    // Given / When
+    const { view, handle } = await mounted({
+      candles: CANDLES,
+      indicators: [
+        { type: 'volume', paneId: 'price' },
+        { type: 'rsi' },
+        { type: 'macd' },
+      ],
+    });
+    tick();
+    // Then: price 3 : RSI 1 : MACD 1 of the 300 dp stack
+    const { state } = handle;
+    expect(handle.getPanes().map((p) => p.id)).toEqual([
+      'price',
+      'pane:rsi-1',
+      'pane:macd-2',
+    ]);
+    expect(state.paneLayout.value.heights).toEqual([180, 60, 60]);
+    expect(state.plotHeight.value).toBe(180);
+    const pictures = view.UNSAFE_root.findAllByType('SkiaPicture' as never);
+    const ops = pictures.map(
+      (p) => (p.props.picture.value as { ops: { op: string }[] }).ops
+    );
+    // Volume bars (2 buckets) in the underlay; RSI + MACD in the panes.
+    expect(ops[0]?.filter((o) => o.op === 'path').length).toBe(2);
+    expect(ops[2]?.filter((o) => o.op === 'clip')).toHaveLength(2);
+    expect(ops[2]?.filter((o) => o.op === 'path').length).toBeGreaterThan(4);
+    // Pane legends: RSI and MACD captions.
+    const legend = (
+      pictures[4]?.props.picture.value as {
+        texts(): string[];
+      }
+    ).texts();
+    expect(legend).toEqual(
+      expect.arrayContaining(['Vol', 'RSI 14', 'MACD 12 26 9'])
+    );
+  });
+
+  it('TC19: removing the indicators drops their panes', async () => {
+    // Given
+    const controller = createTradingChartController();
+    const view = await render(
+      <TradingChart
+        testID="chart"
+        controller={controller}
+        candles={CANDLES}
+        indicators={[{ type: 'rsi' }]}
+      />
+    );
+    fireEvent(view.getByTestId('chart'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 464, height: 324 } },
+    });
+    tick();
+    const handle = asInternals(controller);
+    expect(handle.state.plotHeight.value).toBe(225);
+    // When
+    await view.rerender(
+      <TradingChart testID="chart" controller={controller} indicators={[]} />
+    );
+    tick();
+    // Then
+    expect(handle.getPanes()).toHaveLength(1);
+    expect(handle.state.plotHeight.value).toBe(300);
+  });
+
+  it('TC20: explicit panes through the controller', async () => {
+    // Given
+    const { handle } = await mounted({ candles: CANDLES });
+    // When
+    act(() => {
+      handle.addPane({ id: 'mine', heightRatio: 1 });
+      handle.addIndicator({ type: 'atr', paneId: 'mine' });
+    });
+    tick();
+    const split = handle.state.paneLayout.value.heights;
+    act(() => {
+      expect(handle.removePane('mine')).toBe(true);
+    });
+    tick();
+    // Then
+    expect(split).toEqual([225, 75]);
+    expect(handle.getIndicators()).toEqual([]);
+    expect(handle.state.paneLayout.value.heights).toEqual([300]);
+    expect(handle.removePane('price')).toBe(false);
   });
 });

@@ -12,9 +12,18 @@
  * | LA7  | setPriceAxisWidth same value                       | Boundary           | no write                                 |
  * | LA8  | setPriceAxisWidth NaN / -1 / ∞                     | Invalid            | ignored                                  |
  * | LA9  | setPriceAxisWidth 0                                | Boundary (0)       | plot = canvas width                      |
+ * | LA10 | setPaneSpec price 3 : RSI 1                        | Normal             | stack 300, price 225, RSI 75 at 225      |
+ * | LA11 | resizeCanvas with two panes                        | Normal             | layout follows the new stack height      |
+ * | LA12 | setPaneSpec before layout (stack 0)                | Boundary (0)       | all heights 0, plot 0                    |
+ * | LA13 | setPaneSpec with no panes                          | Boundary (empty)   | plot height 0                            |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { plotSizeFor, resizeCanvas, setPriceAxisWidth } from '../LayoutActions';
+import {
+  plotSizeFor,
+  resizeCanvas,
+  setPaneSpec,
+  setPriceAxisWidth,
+} from '../LayoutActions';
 import { makeEngine } from './engineTestUtils';
 
 beforeEach(() => {
@@ -105,5 +114,55 @@ describe('setPriceAxisWidth', () => {
     setPriceAxisWidth(state, options, 0, 24);
     // Then
     expect(state.plotWidth.value).toBe(464);
+  });
+});
+
+describe('pane layout', () => {
+  const SPEC = { ids: ['price', 'rsi'], ratios: [3, 1], minHeights: [0, 0] };
+
+  it('LA10: setPaneSpec splits the stack', () => {
+    // Given
+    const { state, options } = laidOut();
+    // When
+    setPaneSpec(state, options, SPEC);
+    // Then
+    expect(state.stackHeight.value).toBe(300);
+    expect(state.paneLayout.value).toEqual({
+      ids: ['price', 'rsi'],
+      tops: [0, 225],
+      heights: [225, 75],
+      total: 300,
+    });
+    expect(state.plotHeight.value).toBe(225);
+    expect(state.plotWidth.value).toBe(400);
+  });
+
+  it('LA11: resizing the canvas re-lays out the panes', () => {
+    // Given
+    const { state, options } = laidOut();
+    setPaneSpec(state, options, SPEC);
+    // When
+    resizeCanvas(state, options, 464, 424, 24);
+    // Then
+    expect(state.paneLayout.value.heights).toEqual([300, 100]);
+    expect(state.plotHeight.value).toBe(300);
+  });
+
+  it('LA12 / LA13: no stack or no panes', () => {
+    // Given
+    const engine = makeEngine();
+    // When
+    setPaneSpec(engine.state, engine.options, SPEC);
+    const before = engine.state.paneLayout.value.heights;
+    const laid = laidOut();
+    setPaneSpec(laid.state, laid.options, {
+      ids: [],
+      ratios: [],
+      minHeights: [],
+    });
+    // Then
+    expect(before).toEqual([0, 0]);
+    expect(engine.state.plotHeight.value).toBe(0);
+    expect(laid.state.plotHeight.value).toBe(0);
   });
 });

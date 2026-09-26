@@ -15,7 +15,7 @@ import { clamp, rubberBand } from './ScaleMath';
  * padding, negative = scrolled into history. Anchoring at the right edge
  * means **prepending history never moves the viewport**; appending moves it
  * by one bar, which is exactly "follow realtime". To keep the view still
- * while scrolled back, add the appended count to `rightOffset`.
+ * while scrolled back, subtract the appended count from `rightOffset`.
  *
  * All functions are worklet-compatible (see `ScaleMath.ts`) and take the
  * state as a plain object so they can read a Reanimated shared value

@@ -110,8 +110,8 @@ describe('connectStoreToUi', () => {
     store.append(nextBar(store));
     flush();
     // Then
-    expect(state.rightOffset.value).toBe(-59);
-    expect(state.rawOffset.value).toBe(-59);
+    expect(state.rightOffset.value).toBe(-61);
+    expect(state.rawOffset.value).toBe(-61);
   });
 
   it('SS6: does not shift the view for the first bar', () => {

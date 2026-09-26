@@ -4,35 +4,26 @@ import {
   useImperativeHandle,
   useMemo,
   useSyncExternalStore,
-  type Ref,
 } from 'react';
 import {
   PixelRatio,
   StyleSheet,
   View,
   type LayoutChangeEvent,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
-import {
-  Gesture,
-  GestureDetector,
-  type ComposedGesture,
-  type GestureType,
-} from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { scheduleOnUI } from 'react-native-worklets';
-import { resolveChartConfig, type ChartConfig } from '../core/ChartConfig';
-import type { Candle } from '../data/Candle';
+import { resolveChartConfig } from '../core/ChartConfig';
 import {
   asInternals,
   createTradingChartController,
-  type TradingChartHandle,
 } from '../engine/ChartControllerImpl';
+import type { TradingChartProps } from './TradingChartProps';
+import { useHistoryPagination } from './useHistoryPagination';
 import { toViewportOptions } from '../engine/ChartSharedState';
 import { connectIndicatorsToUi } from '../engine/IndicatorSync';
 import { connectPanesToUi } from '../engine/PaneSync';
 import { connectStoreToUi } from '../engine/StoreSync';
-import type { IndicatorInput } from '../indicators/Indicator';
 import {
   overlayAutoScaleRefs,
   resolveOverlaySpecs,
@@ -40,69 +31,24 @@ import {
 import { resolvePaneSpecs } from '../render/panes/PaneRenderSpec';
 import { useChartReactions } from '../engine/useChartReactions';
 import { resizeCanvas } from '../engine/LayoutActions';
-import {
-  useCrosshairCallback,
-  type CrosshairChangeHandler,
-} from '../interaction/useCrosshairCallback';
+import { useCrosshairCallback } from '../interaction/useCrosshairCallback';
 import { useChartGestures } from '../interaction/useChartGestures';
 import { useCrosshairGesture } from '../interaction/useCrosshairGesture';
 import { usePaneResizeGesture } from '../interaction/usePaneResizeGesture';
 import { SkiaChartCanvas } from '../render/skia/SkiaChartCanvas';
-import type { ChartTheme } from '../theme/ChartTheme';
 import { defaultDarkTheme } from '../theme/defaultDarkTheme';
-import { mergeTheme, type ChartThemeOverride } from '../theme/mergeTheme';
-import type { DeepPartial } from '../utils/deepMerge';
+import { mergeTheme } from '../theme/mergeTheme';
 
-export interface TradingChartProps {
-  /**
-   * Initial / replacement dataset (spec §20). Changing the array reference
-   * calls `setData` (full reset). Stream realtime updates through the
-   * controller (`appendBar` / `updateLastBar`) instead of new arrays.
-   */
-  candles?: readonly Candle[];
-  /** Handle from `useTradingChartController()`; created internally if omitted. */
-  controller?: TradingChartHandle;
-  /** Receives the chart handle (same object as `controller`). */
-  ref?: Ref<TradingChartHandle>;
-  /**
-   * Base theme. Defaults to `defaultDarkTheme`. Keep the reference stable
-   * (module constant or `useMemo`) to avoid re-resolving on every render.
-   */
-  theme?: ChartTheme;
-  /** Partial overrides deep-merged over `theme`. Keep the reference stable. */
-  themeOverride?: ChartThemeOverride;
-  /**
-   * Declarative indicator set (compared by value; matched by id, default
-   * `${type}-${index}`). Omit it to manage indicators imperatively through
-   * the controller (`addIndicator` …). Overlays (`sma`, `ema`, `wma`,
-   * `bollinger`) draw on the price pane with legend values; pane
-   * indicators (`volume`, `rsi`, `macd`, `atr`) get their own pane below
-   * it (or set `paneId: 'price'` for a volume overlay).
-   */
-  indicators?: readonly IndicatorInput[];
-  /** Partial config merged over `DEFAULT_CHART_CONFIG` (compared by value). */
-  config?: DeepPartial<ChartConfig>;
-  /**
-   * Called on the JS thread when the crosshair moves to another bar (with
-   * that bar) or hides (`null`) — never per frame. Suited for haptics.
-   */
-  onCrosshairChange?: CrosshairChangeHandler;
-  /**
-   * Replaces the built-in long-press crosshair gesture (raced against
-   * pan / pinch). Keep the reference stable.
-   */
-  crosshairGesture?: GestureType | ComposedGesture;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-}
+export type { TradingChartProps } from './TradingChartProps';
 
 /**
  * Candlestick trading chart: Skia rendering of the visible bars (4 batched
  * paths), tick-derived grid, auto-sized price / time axes, last-price
  * marker, long-press crosshair with OHLC legend, overlay indicators, pan / pinch / fling /
  * double-tap gestures and auto Y-scale, all driven by UI-thread shared
- * values. React renders only on prop, theme, config or layout changes —
- * never per gesture frame.
+ * values; realtime follow mode and history pagination (`onLoadMore`).
+ * React renders only on prop, theme, config or layout changes — never per
+ * gesture frame or realtime tick.
  */
 export function TradingChart({
   candles,
@@ -113,6 +59,9 @@ export function TradingChart({
   config,
   indicators,
   onCrosshairChange,
+  onLoadMore,
+  historyLoadingIndicator,
+  realtimeStatus,
   crosshairGesture,
   style,
   testID,
@@ -144,15 +93,32 @@ export function TradingChart({
   }, [handle, resolved]);
 
   useEffect(
-    () => connectStoreToUi(handle.store, handle.state, () => handle.options),
+    () =>
+      connectStoreToUi(
+        handle.store,
+        handle.state,
+        () => handle.options,
+        () => handle.resetPolicy
+      ),
     [handle]
   );
 
   useEffect(() => {
     if (candles) {
-      handle.setData(candles);
+      handle.syncCandles(candles);
     }
   }, [handle, candles]);
+
+  useEffect(() => {
+    if (realtimeStatus !== undefined) {
+      handle.setRealtimeStatus(realtimeStatus);
+    }
+  }, [handle, realtimeStatus]);
+  const historyLoading = useHistoryPagination(
+    handle,
+    onLoadMore,
+    resolved.history
+  );
 
   const indicatorsKey = indicators ? JSON.stringify(indicators) : null;
   useEffect(() => {
@@ -260,7 +226,16 @@ export function TradingChart({
           overlaySpecs={overlaySpecs}
           paneSpecs={paneSpecs}
           getMetrics={getMetrics}
+          lastPricePulse={resolved.realtime.lastPricePulse}
         />
+        {historyLoading && historyLoadingIndicator !== undefined ? (
+          <View
+            style={[styles.historySlot, { bottom: timeAxisHeight }]}
+            pointerEvents="none"
+          >
+            {historyLoadingIndicator}
+          </View>
+        ) : null}
       </View>
     </GestureDetector>
   );
@@ -268,4 +243,10 @@ export function TradingChart({
 
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: 'hidden' },
+  historySlot: {
+    position: 'absolute',
+    left: 8,
+    top: 0,
+    justifyContent: 'center',
+  },
 });

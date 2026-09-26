@@ -183,12 +183,20 @@ export {
   type ChartCrosshairConfig,
   type ChartDebugConfig,
   type ChartOverlaysConfig,
+  type ChartRealtimeConfig,
+  type ChartHistoryConfig,
   type CrosshairMode,
   type ChartInteractionConfig,
   type ChartLayoutConfig,
   type ChartViewportConfig,
 } from './core/ChartConfig';
-export type { TradingChartController } from './core/ChartController';
+export type {
+  ChartSettingsExtras,
+  SetDataOptions,
+  TradingChartController,
+  UpsertBarResult,
+  ViewportResetPolicy,
+} from './core/ChartController';
 
 // Indicators (P5): contracts, registry, built-ins, engine, adapters
 export {
@@ -497,3 +505,66 @@ export {
 
 // Utilities
 export type { DeepPartial } from './utils/deepMerge';
+
+// Controller, realtime, pagination and settings (P7)
+export {
+  applyCandleDiff,
+  diffCandles,
+  type AppliedCandleDiff,
+  type CandleDiff,
+} from './data/CandleDiff';
+export {
+  appendOffsetShift,
+  barsBeforeView,
+  isNearHistoryStart,
+  shiftIndexForPrepend,
+} from './viewport/ViewportShift';
+export {
+  HistoryLoader,
+  type HistoryLoaderOptions,
+  type HistoryLoadState,
+  type LoadMoreHandler,
+  type LoadMoreRequest,
+  type LoadMoreResult,
+} from './history/HistoryLoader';
+export {
+  isRealtimeStatus,
+  REALTIME_STATUSES,
+  RealtimeStatusStore,
+  type RealtimeStatus,
+} from './realtime/RealtimeStatus';
+export {
+  CHART_SETTINGS_VERSION,
+  createChartSettings,
+  defaultChartSettings,
+  deserializeChartSettings,
+  serializeChartSettings,
+  settingsToIndicatorInputs,
+  type ChartSettings,
+  type ChartSettingsIssue,
+  type ChartSettingsSource,
+  type DeserializedChartSettings,
+  type IndicatorSettings,
+  type IndicatorSettingValue,
+  type PaneSettings,
+} from './settings/ChartSettings';
+export { applyChartSettings } from './settings/ApplySettings';
+export {
+  allowedPlacements,
+  createIndicatorInput,
+  parseParamValue,
+  placementOf,
+  type CreateIndicatorOptions,
+  type ParsedParamValue,
+} from './settings/IndicatorCatalog';
+export type {
+  IndicatorComputeCounts,
+  IndicatorComputeStats,
+} from './indicators/IndicatorStats';
+export {
+  PULSE_MAX_OPACITY,
+  PULSE_MAX_RADIUS,
+  PULSE_MIN_RADIUS,
+  pulseOpacity,
+  pulseRadius,
+} from './render/overlays/LastPricePulse';

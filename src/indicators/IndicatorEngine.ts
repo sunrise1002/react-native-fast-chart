@@ -21,6 +21,10 @@ import {
 } from './IndicatorDefinitions';
 import type { IndicatorModule, IndicatorRegistry } from './IndicatorRegistry';
 import {
+  IndicatorStatsCollector,
+  type IndicatorComputeStats,
+} from './IndicatorStats';
+import {
   IndicatorScheduler,
   type PendingIndicatorWork,
   type RequestFrame,
@@ -73,6 +77,7 @@ export class IndicatorEngine {
   private readonly unsubscribeStore: () => void;
   private readonly getProfiler: () => RenderProfiler;
   private readonly backend: IndicatorBackend;
+  private readonly stats = new IndicatorStatsCollector();
   private seq = 0;
 
   constructor(
@@ -183,6 +188,15 @@ export class IndicatorEngine {
   /** Full updates for every computed indicator (initial UI sync). */
   snapshotUpdates(): IndicatorUpdate[] {
     return snapshotUpdates(this.cache, this.order);
+  }
+
+  /** Full vs incremental computation counters (instrumentation). */
+  getComputeStats(): IndicatorComputeStats {
+    return this.stats.snapshot();
+  }
+
+  resetComputeStats(): void {
+    this.stats.reset();
   }
 
   /** Computes pending work now instead of at the next frame. */
@@ -303,6 +317,7 @@ export class IndicatorEngine {
       this.cache,
       updates
     );
+    this.stats.record(updates);
     if (updates.length > 0) {
       profiler.end(t0);
       this.resultListeners.emit(updates);

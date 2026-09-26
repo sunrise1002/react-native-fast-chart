@@ -97,6 +97,31 @@ export interface ChartOverlaysConfig {
   legendVolume: boolean;
 }
 
+/** Realtime behavior (spec Phase 15). */
+export interface ChartRealtimeConfig {
+  /**
+   * Follow new bars while the last bar is on screen (TradingView). When the
+   * user has scrolled into history the view always holds still. `false`
+   * never auto-scrolls: appended bars appear right of the visible area.
+   */
+  followRealtime: boolean;
+  /** Subtle pulse at the last price whenever the forming bar ticks. */
+  lastPricePulse: boolean;
+  /** Duration of one pulse, ms. */
+  pulseDurationMs: number;
+}
+
+/** History pagination (spec §23.2, Phase 16). */
+export interface ChartHistoryConfig {
+  /**
+   * `onLoadMore` fires when the left edge of the view gets within this
+   * many bars of the oldest loaded bar. `0` = only when it is reached.
+   */
+  loadMoreThresholdBars: number;
+  /** Minimum delay before retrying a failed `onLoadMore`, ms. */
+  retryDelayMs: number;
+}
+
 /** Static chart options. Changing them is not a per-frame operation. */
 export interface ChartConfig {
   layout: ChartLayoutConfig;
@@ -105,6 +130,8 @@ export interface ChartConfig {
   axes: ChartAxesConfig;
   crosshair: ChartCrosshairConfig;
   overlays: ChartOverlaysConfig;
+  realtime: ChartRealtimeConfig;
+  history: ChartHistoryConfig;
   debug: ChartDebugConfig;
 }
 
@@ -146,6 +173,15 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
     lastPrice: true,
     legend: true,
     legendVolume: true,
+  }),
+  realtime: Object.freeze({
+    followRealtime: true,
+    lastPricePulse: false,
+    pulseDurationMs: 700,
+  }),
+  history: Object.freeze({
+    loadMoreThresholdBars: 50,
+    retryDelayMs: 2000,
   }),
   debug: Object.freeze({
     overlay: false,

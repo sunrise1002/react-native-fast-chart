@@ -281,3 +281,13 @@ export function Rect(props: {
 export function Picture(props: { picture: unknown }) {
   return createElement('SkiaPicture', props);
 }
+
+export function Circle(props: {
+  cx: unknown;
+  cy: unknown;
+  r: unknown;
+  color?: unknown;
+  opacity?: unknown;
+}) {
+  return createElement('SkiaCircle', props);
+}

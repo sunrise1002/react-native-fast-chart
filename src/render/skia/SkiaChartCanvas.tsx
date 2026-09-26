@@ -29,6 +29,7 @@ import { useAxesLayer } from './useAxesLayer';
 import { useCandlePaths } from './useCandlePaths';
 import { useFrameProfiler } from './useFrameProfiler';
 import { useIndicatorLayer } from './useIndicatorLayer';
+import { LastPricePulseNode } from './LastPricePulseNode';
 import { useOverlayLayer } from './useOverlayLayer';
 import { usePaneDrawList } from './PanePaints';
 import { usePaneLayer } from './usePaneLayer';
@@ -53,6 +54,8 @@ export interface SkiaChartCanvasProps {
   paneSpecs?: readonly PaneRenderSpec[];
   /** Current chart metrics (read when profiler samples are flushed). */
   getMetrics: () => ChartMetrics;
+  /** Draws the realtime last-price pulse (`realtime.lastPricePulse`). */
+  lastPricePulse?: boolean;
 }
 
 /**
@@ -79,6 +82,7 @@ export function SkiaChartCanvas({
   overlaySpecs,
   paneSpecs = NO_PANE_SPECS,
   getMetrics,
+  lastPricePulse = false,
 }: SkiaChartCanvasProps) {
   const font = useChartFont(theme);
   const paints = useChartPaints(theme);
@@ -193,6 +197,9 @@ export function SkiaChartCanvas({
         <Path path={candles.bullBodies} color={theme.candle.bullish} />
         <Path path={candles.bearBodies} color={theme.candle.bearish} />
         <Picture picture={indicatorLayer.picture} />
+        {lastPricePulse ? (
+          <LastPricePulseNode state={state} theme={theme} />
+        ) : null}
       </Group>
       <Picture picture={panePicture} />
       <Path path={separators} color={theme.pane.separatorColor} />

@@ -66,6 +66,11 @@ export interface ChartSharedState {
   paneSpec: SharedValue<PaneLayoutSpec>;
   /** Pane rects of `paneSpec` in `stackHeight` (price pane first). */
   paneLayout: SharedValue<PaneLayoutFrame>;
+  /**
+   * Last-price pulse progress, `0` (just ticked) … `1` (idle). Animated by
+   * realtime ticks when `realtime.lastPricePulse` is on.
+   */
+  lastPricePulse: SharedValue<number>;
 }
 
 /** Layout spec with only the price pane. */
@@ -87,6 +92,10 @@ export interface ViewportOptions extends TimeScaleOptions {
   overscanBars: number;
   /** Share of the price pane used by non-price-scaled overlays (volume). */
   overlayScaleHeightRatio: number;
+  /** Realtime: follow new bars at the right edge (`realtime.followRealtime`). */
+  followRealtime: boolean;
+  /** Realtime: pulse duration, ms; `0` = pulse disabled. */
+  pulseDurationMs: number;
 }
 
 /** Rubber-band overshoot allowed while dragging, as a share of the plot. */
@@ -119,6 +128,7 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
       heights: [0],
       total: 0,
     }),
+    lastPricePulse: makeMutable(1),
   };
 }
 
@@ -135,6 +145,10 @@ export function toViewportOptions(config: ChartConfig): ViewportOptions {
     bodyRatio: viewport.bodyRatio,
     overscanBars: viewport.overscanBars,
     overlayScaleHeightRatio: layout.overlayScaleHeightRatio,
+    followRealtime: config.realtime.followRealtime,
+    pulseDurationMs: config.realtime.lastPricePulse
+      ? Math.max(0, config.realtime.pulseDurationMs)
+      : 0,
   };
 }
 

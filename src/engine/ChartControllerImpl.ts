@@ -2,25 +2,58 @@ import { useState } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 import { resolveChartConfig, type ChartConfig } from '../core/ChartConfig';
+import type {
+  ChartSettingsExtras,
+  SetDataOptions,
+  UpsertBarResult,
+  ViewportResetPolicy,
+} from '../core/ChartController';
+import type { LogicalRange } from '../core/ChartTypes';
 import type { Candle } from '../data/Candle';
+import {
+  applyCandleDiff,
+  diffCandles,
+  type AppliedCandleDiff,
+} from '../data/CandleDiff';
 import { CandleStore } from '../data/CandleStore';
 import type { CandleIssue } from '../data/CandleValidation';
-import { mergeCandles } from '../data/HistoryMerge';
+import { mergeCandles, type MergeResult } from '../data/HistoryMerge';
+import { HistoryLoader, type HistoryLoadState } from '../history/HistoryLoader';
 import type { IndicatorInput } from '../indicators/Indicator';
 import type { IndicatorEntry } from '../indicators/IndicatorDefinitions';
 import {
   IndicatorEngine,
   type IndicatorPatch,
 } from '../indicators/IndicatorEngine';
+import { upsertCandle } from '../data/CandleUpsert';
+import {
+  removeIndicatorAndEmptyPane,
+  removePaneWithIndicators,
+} from '../panes/PaneCleanup';
 import type { PaneDefinition, PaneInput } from '../panes/Pane';
 import { PaneManager } from '../panes/PaneManager';
 import {
   createChartMetrics,
   type ChartMetrics,
 } from '../performance/ChartMetrics';
+import {
+  RealtimeStatusStore,
+  type RealtimeStatus,
+} from '../realtime/RealtimeStatus';
+import { applyChartSettings } from '../settings/ApplySettings';
+import {
+  createChartSettings,
+  type ChartSettings,
+} from '../settings/ChartSettings';
 import type { DeepPartial } from '../utils/deepMerge';
+import { getVisibleLogicalRange } from '../viewport/VisibleRange';
+import type {
+  ChartControllerInternals,
+  TradingChartHandle,
+} from './ChartHandle';
 import {
   createChartSharedState,
+  readTimeScale,
   toViewportOptions,
   type ChartSharedState,
   type ViewportOptions,
@@ -31,85 +64,10 @@ import {
   showLogicalRange,
 } from './ViewportActions';
 
-/**
- * Chart handle implemented in P3: data entry points, viewport commands
- * (the viewport subset of `TradingChartController`, spec §21) and
- * UI-thread state for host overlays, plus the P5 indicator methods (spec
- * §21 `addIndicator` / `removeIndicator` / `updateIndicator`) and the P6
- * pane methods (spec §12.2, §21 `addPane` / `removePane`).
- */
-export interface TradingChartHandle {
-  /** JS-thread data store (source of truth). */
-  readonly store: CandleStore;
-  /** UI-thread engine state (read in worklets; do not write). */
-  readonly state: ChartSharedState;
-  /** `true` while the last bar is on screen — drive a "jump to latest" button. */
-  readonly isAtRealtime: SharedValue<boolean>;
-  /** Timings (enabled by `config.debug.profiling`) + render counter. */
-  readonly metrics: ChartMetrics;
-  /** Indicator engine (registry, results, entries) bound to `store`. */
-  readonly indicators: IndicatorEngine;
-  /**
-   * Pane list (price pane first). Indicators are assigned by their
-   * `paneId`; an unknown id creates an automatic pane.
-   */
-  readonly panes: PaneManager;
-
-  /** Replaces the dataset (normalized); resets the viewport. */
-  setData(candles: readonly Candle[]): CandleIssue[];
-  /** Appends a newer bar. `false` when rejected (invalid / not newer). */
-  appendBar(candle: Candle): boolean;
-  /** Replaces the forming (last) bar. `false` when rejected. */
-  updateLastBar(candle: Candle): boolean;
-  /** Merges older history without moving the viewport. */
-  prependBars(candles: readonly Candle[]): void;
-
-  /**
-   * Adds an indicator (e.g. `{ type: 'ema', config: { period: 20 } }`);
-   * returns its id. Throws on an unknown type or a duplicate id.
-   */
-  addIndicator(input: IndicatorInput): string;
-  /** Removes an indicator; `false` when unknown. */
-  removeIndicator(id: string): boolean;
-  /** Patches config / style / pane; `false` when unknown. */
-  updateIndicator(id: string, patch: IndicatorPatch): boolean;
-  /** Replaces the whole indicator set (matched by id). */
-  setIndicators(inputs: readonly IndicatorInput[]): void;
-  /** Active indicators in display order. */
-  getIndicators(): readonly IndicatorEntry[];
-
-  /**
-   * Adds an explicit (possibly empty) pane below the price pane; returns
-   * its id. Assign indicators with `paneId`. Throws on a duplicate id.
-   */
-  addPane(input?: PaneInput): string;
-  /**
-   * Removes a pane and its indicators; `false` for the price pane or an
-   * unknown id.
-   */
-  removePane(id: string): boolean;
-  /** Moves a pane (clamped below the price pane); `false` when invalid. */
-  movePane(id: string, index: number): boolean;
-  /** Sets a pane's height weight; `false` when unknown / invalid. */
-  setPaneHeightRatio(id: string, ratio: number): boolean;
-  /** Replaces all height weights (pane order); `false` on a length mismatch. */
-  resizePanes(ratios: readonly number[]): boolean;
-  /** Panes in display order. */
-  getPanes(): readonly PaneDefinition[];
-
-  /** Scrolls to the latest bar (animated by default). */
-  scrollToRealtime(animated?: boolean): void;
-  /** Restores the default zoom at realtime (animated by default). */
-  resetZoom(animated?: boolean): void;
-  /** Shows logical bars `[start, end]` (animated by default). */
-  setVisibleRange(start: number, end: number, animated?: boolean): void;
-}
-
-/** Internal: the component feeds the resolved config in. */
-export interface ChartControllerInternals extends TradingChartHandle {
-  readonly options: ViewportOptions;
-  configure(config: ChartConfig): void;
-}
+export type {
+  ChartControllerInternals,
+  TradingChartHandle,
+} from './ChartHandle';
 
 class ChartController implements ChartControllerInternals {
   readonly store = new CandleStore();
@@ -118,6 +76,11 @@ class ChartController implements ChartControllerInternals {
   metrics: ChartMetrics;
   readonly indicators: IndicatorEngine;
   readonly panes = new PaneManager();
+  readonly history: HistoryLoader;
+  readonly realtimeStatus = new RealtimeStatusStore();
+  resetPolicy: ViewportResetPolicy = 'reset';
+  private lastCandlesProp: readonly Candle[] | null = null;
+  private readonly unsubscribeEntries: () => void;
 
   constructor(config: ChartConfig) {
     this.state = createChartSharedState(config);
@@ -126,9 +89,12 @@ class ChartController implements ChartControllerInternals {
     this.indicators = new IndicatorEngine(this.store, {
       getProfiler: () => this.metrics.channel('indicator'),
     });
+    this.history = new HistoryLoader(this.store, {
+      retryDelayMs: config.history.retryDelayMs,
+    });
     const syncPanes = () => this.panes.sync(this.indicators.getEntries());
     syncPanes();
-    this.indicators.subscribeEntries(syncPanes);
+    this.unsubscribeEntries = this.indicators.subscribeEntries(syncPanes);
   }
 
   get isAtRealtime(): SharedValue<boolean> {
@@ -137,13 +103,27 @@ class ChartController implements ChartControllerInternals {
 
   configure(config: ChartConfig): void {
     this.options = toViewportOptions(config);
+    this.history.setRetryDelay(config.history.retryDelayMs);
     if (this.metrics.enabled !== config.debug.profiling) {
       this.metrics = createChartMetrics({ enabled: config.debug.profiling });
     }
   }
 
-  setData(candles: readonly Candle[]): CandleIssue[] {
+  /* ---------------------------------- Data ---------------------------------- */
+
+  setData(candles: readonly Candle[], options?: SetDataOptions): CandleIssue[] {
+    this.resetPolicy = options?.viewport ?? 'reset';
+    this.lastCandlesProp = null;
     return this.store.setData(candles);
+  }
+
+  syncCandles(candles: readonly Candle[]): AppliedCandleDiff {
+    const diff = diffCandles(this.lastCandlesProp, candles, this.store.columns);
+    this.lastCandlesProp = candles;
+    if (diff.kind === 'reset') {
+      this.resetPolicy = 'reset';
+    }
+    return applyCandleDiff(this.store, candles, diff);
   }
 
   appendBar(candle: Candle): boolean {
@@ -154,16 +134,42 @@ class ChartController implements ChartControllerInternals {
     return this.store.updateLast(candle);
   }
 
-  prependBars(candles: readonly Candle[]): void {
-    mergeCandles(this.store, candles);
+  upsertBar(candle: Candle): UpsertBarResult {
+    return upsertCandle(this.store, candle);
   }
+
+  prependBars(candles: readonly Candle[]): MergeResult {
+    return mergeCandles(this.store, candles);
+  }
+
+  getBarCount(): number {
+    return this.store.length;
+  }
+
+  getBar(index: number): Candle | undefined {
+    return this.store.get(index);
+  }
+
+  getLastBar(): Candle | undefined {
+    return this.store.get(this.store.length - 1);
+  }
+
+  getVisibleRange(): LogicalRange | null {
+    const time = readTimeScale(this.state);
+    if (!(time.width > 0) || !(time.barSpacing > 0) || time.barCount === 0) {
+      return null;
+    }
+    return getVisibleLogicalRange(time);
+  }
+
+  /* ------------------------------- Indicators ------------------------------- */
 
   addIndicator(input: IndicatorInput): string {
     return this.indicators.add(input);
   }
 
   removeIndicator(id: string): boolean {
-    return this.indicators.remove(id);
+    return removeIndicatorAndEmptyPane(this.indicators, this.panes, id);
   }
 
   updateIndicator(id: string, patch: IndicatorPatch): boolean {
@@ -178,20 +184,14 @@ class ChartController implements ChartControllerInternals {
     return this.indicators.getEntries();
   }
 
+  /* ---------------------------------- Panes ---------------------------------- */
+
   addPane(input?: PaneInput): string {
     return this.panes.add(input);
   }
 
   removePane(id: string): boolean {
-    const pane = this.panes.getPane(id);
-    if (!pane || pane.type === 'price') {
-      return false;
-    }
-    for (const indicatorId of pane.indicatorIds) {
-      this.indicators.remove(indicatorId);
-    }
-    this.panes.remove(id);
-    return true;
+    return removePaneWithIndicators(this.indicators, this.panes, id);
   }
 
   movePane(id: string, index: number): boolean {
@@ -209,6 +209,8 @@ class ChartController implements ChartControllerInternals {
   getPanes(): readonly PaneDefinition[] {
     return this.panes.getPanes();
   }
+
+  /* -------------------------------- Viewport -------------------------------- */
 
   scrollToRealtime(animated = true): void {
     scheduleOnUI(scrollToRealtime, this.state, this.options, animated);
@@ -228,6 +230,60 @@ class ChartController implements ChartControllerInternals {
       animated
     );
   }
+
+  /* ------------------------- Settings / status / history ------------------------- */
+
+  getSettings(extras: ChartSettingsExtras = {}): ChartSettings {
+    return createChartSettings({
+      indicators: this.indicators.getEntries(),
+      panes: this.panes.getPanes(),
+      isExplicitPane: (id) => this.panes.isExplicit(id),
+      ...extras,
+    });
+  }
+
+  applySettings(settings: ChartSettings): void {
+    applyChartSettings(this.indicators, this.panes, settings);
+  }
+
+  setRealtimeStatus(status: RealtimeStatus): void {
+    this.realtimeStatus.set(status);
+  }
+
+  getRealtimeStatus(): RealtimeStatus {
+    return this.realtimeStatus.get();
+  }
+
+  subscribeRealtimeStatus(
+    listener: (status: RealtimeStatus) => void
+  ): () => void {
+    return this.realtimeStatus.subscribe(listener);
+  }
+
+  loadMoreHistory(): boolean {
+    return this.history.request();
+  }
+
+  setHasMoreHistory(hasMore: boolean): void {
+    this.history.setHasMore(hasMore);
+  }
+
+  getHistoryState(): HistoryLoadState {
+    return this.history.getState();
+  }
+
+  subscribeHistoryState(listener: () => void): () => void {
+    return this.history.subscribe(listener);
+  }
+
+  dispose(): void {
+    this.unsubscribeEntries();
+    this.history.dispose();
+    this.indicators.dispose();
+    this.panes.dispose();
+    this.realtimeStatus.dispose();
+    this.lastCandlesProp = null;
+  }
 }
 
 /** Creates a chart handle outside React (e.g. in a store / service). */
@@ -241,6 +297,11 @@ export function createTradingChartController(
  * Creates a stable chart handle for a host component; pass it to
  * `<TradingChart controller={...} />`. The config only seeds the initial
  * viewport; the chart's `config` prop stays authoritative.
+ *
+ * Not disposed automatically: every subscription the chart component
+ * makes is released on unmount, and the handle only references its own
+ * parts, so it is garbage-collected with the host (auto-disposal would
+ * also break StrictMode's mount → unmount → mount check).
  */
 export function useTradingChartController(
   config?: DeepPartial<ChartConfig> | null

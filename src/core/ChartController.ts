@@ -1,35 +1,129 @@
 import type { Candle } from '../data/Candle';
-import type { IndicatorDefinition } from '../indicators/Indicator';
-import type { PaneInput } from '../panes/Pane';
+import type { CandleIssue } from '../data/CandleValidation';
+import type { MergeResult } from '../data/HistoryMerge';
+import type { HistoryLoadState } from '../history/HistoryLoader';
+import type { IndicatorInput } from '../indicators/Indicator';
+import type { IndicatorEntry } from '../indicators/IndicatorDefinitions';
+import type { IndicatorPatch } from '../indicators/IndicatorEngine';
+import type { PaneDefinition, PaneInput } from '../panes/Pane';
+import type { RealtimeStatus } from '../realtime/RealtimeStatus';
+import type { ChartSettings } from '../settings/ChartSettings';
+import type { LogicalRange } from './ChartTypes';
+
+/**
+ * Viewport after `setData` (symbol / timeframe switch, spec §32):
+ * `'reset'` restores the initial zoom at realtime; `'keepZoom'` keeps the
+ * current bar width and scrolls to realtime.
+ */
+export type ViewportResetPolicy = 'reset' | 'keepZoom';
+
+export interface SetDataOptions {
+  /** Default `'reset'`. */
+  viewport?: ViewportResetPolicy;
+}
+
+/** What `upsertBar` did. */
+export type UpsertBarResult = 'appended' | 'updated' | 'patched' | 'rejected';
+
+/** Host-provided fields stored alongside the chart settings. */
+export interface ChartSettingsExtras {
+  theme?: string;
+  timeframe?: string;
+}
 
 /**
  * Imperative chart API (spec §21). High-frequency data (realtime ticks,
- * history pages) flows through this controller instead of React props.
- * Implemented in phase P7; the signature is fixed here so that earlier
- * phases can code against it.
+ * history pages) flows through this controller instead of React props:
+ * none of these calls re-render React.
  */
 export interface TradingChartController {
-  /** Replaces the whole dataset (symbol or timeframe switch). */
-  setData(candles: readonly Candle[]): void;
+  /* ---------------------------------- Data ---------------------------------- */
 
-  /** Appends a new bar whose time is greater than the last bar's time. */
-  appendBar(candle: Candle): void;
-  /** Replaces the last (still forming) bar. */
-  updateLastBar(candle: Candle): void;
-  /** Prepends older history without moving the visible viewport. */
-  prependBars(candles: readonly Candle[]): void;
+  /**
+   * Replaces the dataset (symbol / timeframe switch): normalizes the rows,
+   * recalculates indicators, resets history pagination and applies the
+   * viewport policy. Returns the dropped rows.
+   */
+  setData(candles: readonly Candle[], options?: SetDataOptions): CandleIssue[];
+  /** Appends a newer bar (interval rollover). `false` when rejected. */
+  appendBar(candle: Candle): boolean;
+  /** Replaces the forming (last) bar; same `time` required. */
+  updateLastBar(candle: Candle): boolean;
+  /**
+   * Kline-style upsert: appends a newer bar, updates the last bar, or
+   * patches an existing older bar with the same time.
+   */
+  upsertBar(candle: Candle): UpsertBarResult;
+  /** Merges older history without moving the visible bars. */
+  prependBars(candles: readonly Candle[]): MergeResult;
 
-  /** Returns the id of the added indicator. */
-  addIndicator(definition: IndicatorDefinition): string;
-  removeIndicator(id: string): void;
-  updateIndicator(id: string, patch: Partial<IndicatorDefinition>): void;
+  /* -------------------------------- Getters -------------------------------- */
 
-  /** Returns the id of the added pane. */
+  getBarCount(): number;
+  /** Bar `index` (0 = oldest loaded), `undefined` when out of range. */
+  getBar(index: number): Candle | undefined;
+  getLastBar(): Candle | undefined;
+  /**
+   * Fractional logical range currently on screen (`null` before layout /
+   * without data). Reads UI-thread state; not for per-frame use.
+   */
+  getVisibleRange(): LogicalRange | null;
+
+  /* ------------------------------- Indicators ------------------------------- */
+
+  /** Returns the indicator id. Throws on an unknown type / duplicate id. */
+  addIndicator(input: IndicatorInput): string;
+  /**
+   * Removes an indicator (cache and pane reference); its pane is removed
+   * when left empty. `false` when unknown.
+   */
+  removeIndicator(id: string): boolean;
+  /** Params / style / pane; only this indicator recalculates. */
+  updateIndicator(id: string, patch: IndicatorPatch): boolean;
+  setIndicators(inputs: readonly IndicatorInput[]): void;
+  getIndicators(): readonly IndicatorEntry[];
+
+  /* ---------------------------------- Panes ---------------------------------- */
+
+  /** Returns the pane id. */
   addPane(input?: PaneInput): string;
-  removePane(id: string): void;
+  removePane(id: string): boolean;
+  movePane(id: string, index: number): boolean;
+  setPaneHeightRatio(id: string, ratio: number): boolean;
+  resizePanes(ratios: readonly number[]): boolean;
+  getPanes(): readonly PaneDefinition[];
 
-  scrollToRealtime(): void;
+  /* -------------------------------- Viewport -------------------------------- */
+
+  scrollToRealtime(animated?: boolean): void;
   /** Shows bars with logical indices in `[start, end]`. */
-  setVisibleRange(start: number, end: number): void;
-  resetZoom(): void;
+  setVisibleRange(start: number, end: number, animated?: boolean): void;
+  resetZoom(animated?: boolean): void;
+
+  /* -------------------------------- Settings -------------------------------- */
+
+  /** Serializable snapshot of indicators and panes (spec §25). */
+  getSettings(extras?: ChartSettingsExtras): ChartSettings;
+  /** Restores indicators, pane order and heights (unknown types skipped). */
+  applySettings(settings: ChartSettings): void;
+
+  /* ------------------------------ Realtime status ------------------------------ */
+
+  setRealtimeStatus(status: RealtimeStatus): void;
+  getRealtimeStatus(): RealtimeStatus;
+  subscribeRealtimeStatus(
+    listener: (status: RealtimeStatus) => void
+  ): () => void;
+
+  /* --------------------------------- History --------------------------------- */
+
+  /** Requests older bars now (same guards as the left-edge trigger). */
+  loadMoreHistory(): boolean;
+  /** `false` = no older history; `true` = requestable again. */
+  setHasMoreHistory(hasMore: boolean): void;
+  getHistoryState(): HistoryLoadState;
+  subscribeHistoryState(listener: () => void): () => void;
+
+  /** Releases listeners, schedulers and caches. The handle is unusable after. */
+  dispose(): void;
 }

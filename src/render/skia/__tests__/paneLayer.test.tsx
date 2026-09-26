@@ -16,8 +16,10 @@
  * | PL3  | pane collapsed (not in layout) / invalid scale         | Abnormal          | skipped                                            |
  * | PL4  | results not aligned                                    | Abnormal          | clip + guides only, no histogram                   |
  * | PL5  | unknown histogram output                               | Invalid           | no histogram path                                  |
+ * | PL6  | non-finite guide level / band bound                    | Invalid           | skipped (valid guides still drawn)                 |
  * | AX1  | pane axes                                              | Normal            | RSI at guide levels, MACD ticks, widest counts     |
  * | AX2  | no scale frame / invalid scale / overlay only          | Abnormal          | no pane labels                                     |
+ * | AX3  | guide labels with chart decimals (-1)                  | Boundary          | integer labels                                     |
  * | LG1  | pane legends                                           | Normal            | captions at the pane tops, volume under OHLC       |
  * | LG2  | pane shorter than a legend row                         | Boundary          | legend skipped                                     |
  * | CH1  | crosshair in the RSI pane                              | Normal            | vertical line spans stack, RSI value label         |
@@ -276,6 +278,24 @@ describe('usePaneLayer', () => {
   });
 });
 
+describe('guides', () => {
+  it('PL6: non-finite guides are skipped', () => {
+    // Given
+    const { e, items } = setup([{ type: 'rsi', id: 'rsi' }]);
+    const broken = items.map((i) => ({
+      ...i,
+      guideLevels: [Infinity, 50],
+      guideBand: { upper: NaN, lower: 30 },
+    }));
+    // When
+    const { result } = layers(e, broken);
+    // Then
+    const ops = pic({ value: result.current.frame.value.panes }).ops;
+    expect(opsOf(ops, 'rect')).toHaveLength(0);
+    expect(opsOf(ops, 'line')).toHaveLength(1);
+  });
+});
+
 function axes(e: Engine, items: readonly PaneDrawItem[], withScales = true) {
   return renderHook(() => {
     const bar = useSharedValue(60_000);
@@ -341,6 +361,25 @@ describe('pane axes', () => {
     );
     // MACD without results → no MACD labels.
     expect(pic(noData.result.current.picture).texts()).toHaveLength(baseCount);
+  });
+});
+
+describe('guide labels', () => {
+  it('AX3: chart decimals (-1) label guide levels as integers', () => {
+    // Given
+    const { e, items } = setup([{ type: 'rsi', id: 'rsi' }]);
+    const chartFormat = items.map((i) => ({
+      ...i,
+      format: { decimals: -1, compact: false },
+    }));
+    // When
+    const { result } = axes(e, chartFormat);
+    tick();
+    // Then
+    const texts = textYs(pic(result.current.picture).ops)
+      .filter((t) => t.y > 225)
+      .map((t) => t.text);
+    expect(texts).toEqual(expect.arrayContaining(['30', '50', '70']));
   });
 });
 

@@ -1131,3 +1131,227 @@ The gate has two parts:
   scan). It measures 14 µs / frame for BB in Node; P8 may merge the
   passes.
 - On-device §36 numbers still have to be recorded (see above).
+
+## P6 — Pane system + Volume, RSI, MACD, ATR
+
+### What was built
+
+- **Pane model** (`panes/Pane.ts`): `PaneDefinition` holds `id`,
+  `type` (`price` / `indicator`), `heightRatio`, `minHeight` and
+  `indicatorIds`.
+  - `PaneInput` is the loose `addPane` input.
+  - Defaults: price 3 : indicator 1, minimum heights 80 / 40 dp.
+  - Ratios are clamped to `[1e-3, 1e3]`.
+- **PaneManager** (`panes/PaneManager.ts`): an ordered pane list with the
+  price pane always first. It provides `add`, `remove`, `move`,
+  `setHeightRatio`, `resize` (all ratios, used by the drag commit),
+  `subscribe` and `getPanes` (a stable snapshot).
+  - `sync(entries)` assigns indicators to panes by `definition.paneId`.
+    Unknown ids get an automatic pane (`pane:<indicatorId>` by default).
+  - An automatic pane is dropped with its last indicator. Explicit panes
+    (`addPane`) stay until removed.
+- **Layout engine** (`panes/PaneLayout.ts`, pure worklets):
+  - `computePaneLayout(spec, total)` splits the stack by weight, honours
+    the minimum heights and snaps to whole dp. The last pane absorbs the
+    rounding.
+  - `paneIndexAt` finds the pane under a y position. `hitTestSeparator`
+    finds the nearest separator within the slop.
+  - `dragSeparator` moves height between the two adjacent panes only,
+    clamped by their minimums; every other pane keeps its size.
+- **Pane scales** (`panes/PaneScale.ts`): `computePaneRange` over the
+  visible slice.
+  - `fixed` (RSI 0–100 + 5 % padding).
+  - `volume` (0 → max + 10 % headroom).
+  - `zeroCentered` (MACD: always includes 0).
+  - `auto` (ATR: data range + 10 % padding).
+  - Nothing drawable returns NaN, and the pane then draws nothing.
+- **Indicators** (committed in `bf3e244`), all incremental (O(1) per
+  tick) through step kernels:
+  - Volume: output 0 is the volume, output 1 an optional SMA
+    (`maPeriod`, 0 = off). It is colored by candle direction.
+  - RSI: Wilder RMA seeded with an SMA, like TradingView `ta.rsi`.
+    Guides are 30 / 50 / 70, with a filled overbought/oversold band.
+  - MACD: seeded EMAs, with outputs MACD, signal and histogram.
+  - ATR: RMA of the true range.
+  - `SeededAverage` is the shared EMA/RMA recursion.
+- **Generic histogram renderer**
+  (`render/indicators/HistogramGeometry.ts`):
+  - It emits bars from a zero baseline into a sink, with one color
+    bucket per bar:
+    - `sign`: 2 colors;
+    - `trend`: 4 colors, TradingView MACD;
+    - `candle`: bull/bear, used for volume.
+  - `usePaneLayer` adds each bucket to its own `SkPathBuilder` and draws
+    at most 4 paths per histogram. No React node or draw call is made
+    per bar.
+- **Render specs** (`render/panes/PaneRenderSpec.ts`):
+  `resolvePaneSpecs(entries, panes, theme)` returns one spec per pane,
+  in pane order. A spec holds the pane's indicators (strokes, fills,
+  histograms with resolved colors), value format, merged guides and
+  auto-scale refs.
+  - The price pane gets a spec only when it hosts non-price-scale
+    indicators (the volume overlay).
+  - MACD defaults to `trend` coloring; `style.histogramColorMode:
+    'sign'` switches to 2 colors.
+- **Rendering** (`render/skia/`):
+  - `usePaneScales`: pane Y scales on the UI thread.
+  - `usePaneLayer`: two pictures.
+    - The **underlay** holds price-pane overlays: volume in the bottom
+      `layout.overlayScaleHeightRatio` (20 %) of the price pane, drawn
+      below the candles.
+    - The **panes** picture holds every indicator pane, each clipped to
+      its rect. The order is guide band, dashed guides, histograms, band
+      fills, then lines.
+  - `paneAxes.ts`: each pane gets its own right-axis labels and
+    horizontal grid rows.
+  - `useLegendLayer`: each pane gets a legend at its top-left. Volume
+    overlay rows continue the price legend.
+  - Separators are one path.
+- **Shared time scale**:
+  - There is one time axis, at the bottom of the stack.
+  - Vertical grid lines and the crosshair's vertical line span all panes.
+  - The crosshair's horizontal line and value label belong to the pane
+    under the finger, on that pane's scale and value format. In a pane
+    without a valid scale, only the vertical line is drawn.
+- **Layout wiring**:
+  - `ChartSharedState` gained `stackHeight`, `paneSpec` and `paneLayout`.
+  - `resizeCanvas` / `setPaneSpec` → `applyPaneLayout` compute the frame
+    and resize the price viewport to the price pane's height. The
+    existing candle, price-axis and gesture code therefore works
+    unchanged in the top pane.
+  - `engine/PaneSync.ts` mirrors the pane list to the UI thread with one
+    `scheduleOnUI` per pane change.
+- **Separator drag** (`interaction/usePaneResizeGesture.ts`):
+  - It is a manual-activation Pan raced against the chart gestures.
+  - A touch within `layout.paneSeparatorHitSlop` (12 dp) of a separator
+    activates it. Anything else fails immediately, so pan, pinch and the
+    crosshair keep working.
+  - While dragging, the layout is updated on the UI thread
+    (`setPaneSpec`). On release the ratios are committed once to the
+    `PaneManager` (`resizePanes`) through `scheduleOnRN`.
+  - Disable it with `interaction.paneResizeEnabled: false`.
+- **Controller**: `addPane(input?)`, `removePane(id)` (also removes the
+  pane's indicators; `false` for the price pane or unknown ids),
+  `movePane`, `setPaneHeightRatio`, `resizePanes` and `getPanes`. The
+  handle exposes `panes` (PaneManager).
+- **Example**:
+  - The Playground has a pane selector (`example/src/components/PaneSelector.tsx`).
+    Volume cycles off → overlay → pane, and RSI, MACD and ATR can be
+    toggled.
+  - The selector drives the declarative `indicators` prop, alongside the
+    existing overlay toggle.
+
+### Key design decisions
+
+- **The price pane stays "the plot".** Pane layout only changes
+  `plotHeight` for the price viewport. Candles, auto-scale, the
+  last-price marker and the pan/pinch/crosshair gestures needed no
+  per-pane logic; only the time axis and the crosshair were made
+  stack-aware.
+- **Two pictures for all panes.** The node count is constant however
+  many panes or indicators are active: underlay, panes, separators. Each
+  pane is `save` / `clipRect` / `restore` inside one picture.
+  Histograms batch by color bucket.
+- **Guide levels label fixed-scale panes.** A 60–75 dp RSI pane is too
+  short for the generic tick step (one tick at 0, clipped at the edge).
+  Panes with guides are therefore labelled at their guide levels (30 /
+  50 / 70), as TradingView does.
+- **Commit on release only.** The drag never touches React state or the
+  JS pane list per frame. The UI-thread `paneSpec` is the live value and
+  the manager receives one `resize` at the end. The next JS sync pushes
+  the same ratios back, so nothing jumps.
+- **First visible indicator decides a pane's scale and format.** A pane
+  with MACD + ATR uses MACD's zero-centered scale. Palette slots are
+  consumed in order of appearance, including hidden indicators, so
+  colors don't shift when an indicator is toggled.
+
+### Public API added (main entry)
+
+- **Panes**:
+  - `PaneManager`, `PaneInput`, `PaneIndicatorRef`.
+  - `DEFAULT_*_PANE_*`, `MIN_PANE_RATIO` / `MAX_PANE_RATIO`.
+  - Layout: `computePaneLayout`, `paneIndexAt`, `hitTestSeparator`,
+    `dragSeparator`, `PaneLayoutSpec` / `PaneLayoutFrame`.
+  - Scale: `computePaneRange` and its padding constants.
+  - Render specs: `resolvePaneSpecs`, `PaneRenderSpec`,
+    `PaneValueFormat`, `PaneGuideSpec`, `DEFAULT_PANE_FORMAT`.
+  - `PANE_RESIZE_TEST_ID`.
+- **Indicators**:
+  - Modules: `volumeModule`, `rsiModule`, `macdModule`, `atrModule`.
+  - Output indices and constants: `VOLUME_*`, `MACD_*`,
+    `MACD_HISTOGRAM_COLORS`.
+  - Helpers: `rsiFromAverages`, `trueRange`.
+  - Scale types: `indicatorScale`, `IndicatorScaleSpec`,
+    `IndicatorGuides`, `HistogramColorMode`.
+- **Geometry**:
+  - `buildHistogramGeometry`, `histogramBucket`, `histogramBucketCount`.
+  - `resolveIndicatorDrawSpec`, `HistogramSpec`, `IndicatorDrawSpec`.
+  - `formatIndicatorValue`.
+- **Config**: `layout.overlayScaleHeightRatio`,
+  `layout.paneSeparatorHitSlop`, `interaction.paneResizeEnabled`.
+- **Theme**: `pane.guideColor`, `pane.guideDash`, `pane.guideBandColor`.
+
+### Tests
+
+- Every new test file has a perspective table and uses Given / When /
+  Then. Failure and boundary cases outnumber happy paths.
+- **Golden tests** (`indicators/__tests__/PaneIndicators.test.ts`):
+  - Hand-computed RSI, MACD, ATR and Volume values.
+  - Naive references over 2000 bars.
+  - NaN / ±∞ inputs and warm-up boundaries.
+- **Incremental tests** (`IncrementalProperty.test.ts`): random append /
+  updateLast sequences must equal a full recalculation for all four
+  indicators.
+- **Layout and model**:
+  - `PaneManager` covers sync, explicit vs automatic panes, move, resize
+    and invalid input.
+  - `PaneLayout` covers minimum heights, rounding, zero / negative /
+    NaN totals, hit test at slop ±1, and drag clamping.
+  - `PaneScale` covers every scale kind, empty or unaligned data and
+    degenerate ranges.
+  - `LayoutActions` covers the pane layout driving the plot height.
+- **Render**:
+  - Histogram geometry: every color mode, clamping, zero / non-finite
+    values, degenerate scales.
+  - Pane render specs.
+  - Pane layer (`render/skia/__tests__/paneLayer.test.tsx`): scales,
+    clipping, underlay, guides, collapsed panes, unaligned results, pane
+    axes, legends, crosshair per pane.
+  - `TradingChart` pane layout, including the volume overlay and
+    removal.
+- **Interaction**: `paneResizeGesture.test.tsx` covers a hit within the
+  slop, a miss at slop + 1, multi-touch, no separator, live layout,
+  commit on release, the min-height clamp and the disabled flag.
+  RNGH's jest utils don't emit touch events, so the callbacks are
+  invoked directly.
+- **Controller / sync**: `PaneSync.test.ts` covers the pane API, the
+  automatic pane lifecycle and the UI sync until unsubscribed.
+- **Counts**: 1497 tests in 78 suites (P5: 1309).
+  - Coverage: 99.88 % statements, 99.53 % branches.
+  - All pure P6 modules (`panes/`, `HistogramGeometry`,
+    `PaneRenderSpec`, the pane indicators) are at 100 %.
+- **Remaining uncovered branches** are defensive fallbacks:
+  - `paints[...] ?? axisText` in legend rows;
+  - `stackHeight` 0 before layout in the crosshair;
+  - a guide-level count above the tick capacity;
+  - auto-tick panes with chart decimals (no built-in uses them);
+  - a finite upper band bound with a non-finite lower one.
+
+### Known limitations / follow-ups
+
+- Pane Y ranges are not animated (the price pane's range is). They
+  follow the visible slice on every viewport change.
+- The legend color of a histogram uses bucket 0 (for example, MACD's
+  rising-positive color).
+- The volume overlay has no axis labels; its scale is only used to size
+  the bars.
+- Pane ratios live in the `PaneManager`. They are not persisted (P9 /
+  serialization).
+- There is no per-pane price-scale interaction (drag to rescale, log
+  mode). Panes are always auto-scaled.
+- The separator hit area overlaps the top of the lower pane, so a
+  crosshair started within 12 dp of a separator resizes instead.
+- `src/index.ts` is a pure export barrel and is now about 500 lines,
+  above the ~300-line guideline.
+- On-device verification of the drag feel and frame times still has to
+  be done on hardware.

@@ -14,6 +14,12 @@ import {
 import { generateCandles } from 'react-native-fast-chart/testing';
 import { DebugOverlay } from '../components/DebugOverlay';
 import { JumpToLatestButton } from '../components/JumpToLatestButton';
+import {
+  DEFAULT_PANE_SELECTION,
+  PaneSelector,
+  paneIndicatorInputs,
+  type PaneSelection,
+} from '../components/PaneSelector';
 import { Toggle } from '../components/Toggle';
 
 export type ThemeMode = 'dark' | 'light';
@@ -26,13 +32,12 @@ interface PlaygroundScreenProps {
   onModeChange: (mode: ThemeMode) => void;
 }
 
-/** Overlays shown by the "Indicators" toggle (declarative prop API). */
+/** Overlays shown by the "Ind" toggle (declarative prop API). */
 const OVERLAYS: readonly IndicatorInput[] = [
   { type: 'ema', config: { period: 20 } },
   { type: 'ema', config: { period: 50 } },
   { type: 'bollinger', config: { period: 20, stdDev: 2 } },
 ];
-const NO_OVERLAYS: readonly IndicatorInput[] = [];
 
 export function PlaygroundScreen({
   mode,
@@ -48,6 +53,12 @@ export function PlaygroundScreen({
   const [crosshairMode, setCrosshairMode] = useState<CrosshairMode>('hold');
   const [utc, setUtc] = useState(false);
   const [overlays, setOverlays] = useState(true);
+  const [panes, setPanes] = useState<PaneSelection>(DEFAULT_PANE_SELECTION);
+  // Overlays + pane indicators (volume, RSI, MACD, ATR); stable per change.
+  const indicators = useMemo<IndicatorInput[]>(
+    () => [...(overlays ? OVERLAYS : []), ...paneIndicatorInputs(panes)],
+    [overlays, panes]
+  );
   // Updated only when the crosshair changes bar (never per frame).
   const [inspected, setInspected] = useState<CrosshairChange | null>(null);
   const config = useMemo(
@@ -100,6 +111,7 @@ export function PlaygroundScreen({
           />
         </View>
       </View>
+      <PaneSelector selection={panes} theme={theme} onChange={setPanes} />
       <Text style={[styles.status, { color: theme.axis.textColor }]}>
         {inspected
           ? `#${inspected.index}  ${new Date(inspected.time).toISOString()}  ` +
@@ -112,7 +124,7 @@ export function PlaygroundScreen({
           candles={candles}
           theme={theme}
           config={config}
-          indicators={overlays ? OVERLAYS : NO_OVERLAYS}
+          indicators={indicators}
           onCrosshairChange={setInspected}
         />
         <JumpToLatestButton controller={controller} theme={theme} />

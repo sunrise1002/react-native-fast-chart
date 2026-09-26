@@ -85,6 +85,13 @@ describe('public API', () => {
         'histogramBucket',
         'histogramBucketCount',
         'formatIndicatorValue',
+        // P8
+        'createFrameStats',
+        'DEFAULT_FRAME_TARGET_MS',
+        'droppedFrames',
+        'recordFrameInterval',
+        'resetFrameStats',
+        'summarizeFrameStats',
         'TradingChart',
         'createChartMetrics',
         'createRenderProfiler',

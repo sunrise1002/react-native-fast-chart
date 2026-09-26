@@ -502,6 +502,16 @@ export {
   type BenchmarkScenario,
   type BenchmarkSceneId,
 } from './performance/BenchmarkScenarios';
+export {
+  createFrameStats,
+  DEFAULT_FRAME_TARGET_MS,
+  droppedFrames,
+  recordFrameInterval,
+  resetFrameStats,
+  summarizeFrameStats,
+  type FrameStatsAccumulator,
+  type FrameStatsSummary,
+} from './performance/FrameStats';
 
 // Utilities
 export type { DeepPartial } from './utils/deepMerge';

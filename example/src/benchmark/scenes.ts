@@ -1,8 +1,8 @@
+import type { IndicatorInput } from 'react-native-fast-chart';
 import {
   BENCHMARK_SCENARIOS,
   type BenchmarkSceneId,
-  type IndicatorInput,
-} from 'react-native-fast-chart';
+} from 'react-native-fast-chart/testing';
 
 /*
  * Benchmark scenes (spec §28 A–D, the §36 gate and the P8 100k zoom-out

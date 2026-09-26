@@ -1,268 +1,195 @@
 /**
- * Test perspective table — public entry points
+ * Test perspective table — public entry points (P9 API stabilization)
  *
- * | Case | Input / Precondition     | Perspective | Expected                                 |
- * |------|--------------------------|-------------|------------------------------------------|
- * | E1   | main entry runtime values| API surface | all public runtime exports defined       |
- * | E2   | testing entry            | API surface | fixture generator exported               |
+ * | Case | Input / Precondition        | Perspective | Expected                                        |
+ * |------|-----------------------------|-------------|-------------------------------------------------|
+ * | E1   | main entry runtime values   | API surface | exactly the curated list (docs/API.md)          |
+ * | E2   | testing entry               | API surface | fixtures, benchmark scenes and test IDs          |
+ * | E3   | renderer / geometry names   | Abnormal    | not reachable from the main entry               |
+ * | E4   | viewport / tick math names  | Abnormal    | not reachable from the main entry               |
+ * | E5   | test IDs / benchmark scenes | Abnormal    | moved: absent from the main entry               |
+ * | E6   | P9 additions                | Equivalence | callable functions / components                 |
  */
 import { describe, expect, it } from '@jest/globals';
 import * as api from '../index';
 import * as testing from '../testing';
 
+const exported = (name: string): boolean =>
+  Object.prototype.hasOwnProperty.call(api, name);
+
 describe('public API', () => {
-  it('E1: exposes the runtime exports of the main entry', () => {
+  it('E1: exposes exactly the curated runtime exports', () => {
     // Given / When
     const names = Object.keys(api).sort();
     // Then
     expect(names).toEqual(
       [
-        'BENCHMARK_SCENARIOS',
-        'DEFAULT_CHART_CONFIG',
-        'METRIC_CHANNELS',
-        'NOOP_PROFILER',
-        'PRICE_PANE_ID',
-        'DEFAULT_INDICATOR_PANE_MIN_HEIGHT',
-        'DEFAULT_INDICATOR_PANE_RATIO',
-        'DEFAULT_PRICE_PANE_MIN_HEIGHT',
-        'DEFAULT_PRICE_PANE_RATIO',
-        'MAX_PANE_RATIO',
-        'MIN_PANE_RATIO',
-        'PaneManager',
-        'computePaneLayout',
-        'dragSeparator',
-        'hitTestSeparator',
-        'paneIndexAt',
-        'computePaneRange',
-        'FIXED_SCALE_PADDING',
-        'PANE_SCALE_PADDING',
-        'VOLUME_SCALE_HEADROOM',
-        'DEFAULT_PANE_FORMAT',
-        'resolvePaneSpecs',
-        'resolveIndicatorDrawSpec',
-        'PANE_RESIZE_TEST_ID',
-        // P7
-        'applyCandleDiff',
-        'diffCandles',
-        'appendOffsetShift',
-        'barsBeforeView',
-        'isNearHistoryStart',
-        'shiftIndexForPrepend',
-        'HistoryLoader',
-        'isRealtimeStatus',
-        'REALTIME_STATUSES',
-        'RealtimeStatusStore',
         'CHART_SETTINGS_VERSION',
-        'createChartSettings',
-        'defaultChartSettings',
-        'deserializeChartSettings',
-        'serializeChartSettings',
-        'settingsToIndicatorInputs',
-        'applyChartSettings',
-        'allowedPlacements',
-        'createIndicatorInput',
-        'parseParamValue',
-        'placementOf',
-        'PULSE_MAX_OPACITY',
-        'PULSE_MAX_RADIUS',
-        'PULSE_MIN_RADIUS',
-        'pulseOpacity',
-        'pulseRadius',
-        'atrModule',
-        'trueRange',
-        'MACD_HISTOGRAM',
-        'MACD_HISTOGRAM_COLORS',
-        'MACD_LINE',
-        'MACD_SIGNAL',
-        'macdModule',
-        'rsiFromAverages',
-        'rsiModule',
-        'VOLUME_MA',
-        'VOLUME_VALUE',
-        'volumeModule',
-        'indicatorScale',
-        'buildHistogramGeometry',
-        'histogramBucket',
-        'histogramBucketCount',
-        'formatIndicatorValue',
-        // P8
-        'createFrameStats',
+        'ChartErrorBoundary',
+        'DEFAULT_CHART_CONFIG',
         'DEFAULT_FRAME_TARGET_MS',
-        'droppedFrames',
-        'recordFrameInterval',
-        'resetFrameStats',
-        'summarizeFrameStats',
-        'TradingChart',
-        'createChartMetrics',
-        'createRenderProfiler',
-        'defaultClock',
-        'defaultDarkTheme',
-        'defaultLightTheme',
-        'getCandleIssue',
-        'isValidCandle',
-        'mergeTheme',
-        'normalizeCandles',
-        'resolveChartConfig',
-        'validateCandles',
-        'CandleStore',
-        'mergeCandles',
-        'getBucketStart',
-        'getNextBucketStart',
-        'parseTimeframe',
-        'timeframeToMs',
-        'RealtimeBarAggregator',
-        'barSpacingForRange',
-        'candleBodyWidth',
-        'clampBarSpacing',
-        'clampRightOffset',
-        'elasticRightOffset',
-        'indexToX',
-        'isLastBarVisible',
-        'maxRightOffset',
-        'minRightOffset',
-        'panRightOffset',
-        'rightEdgeIndex',
-        'rightOffsetForRange',
-        'visibleBarCount',
-        'xToIndex',
-        'xToNearestIndex',
-        'zoomRightOffset',
-        'DEFAULT_OVERSCAN_BARS',
-        'getVisibleLogicalRange',
-        'getVisibleRange',
-        'createPriceScale',
-        'DEFAULT_PRICE_PADDING',
-        'DEGENERATE_RANGE_RATIO',
-        'FALLBACK_PRICE_RANGE',
-        'MAX_ABS_PRICE',
-        'normalizePriceRange',
-        'priceToY',
-        'yToPrice',
-        'candleRangeMinMax',
-        'rangeMinMax',
-        'getBarValuesIssue',
-        // P3
-        'createTradingChartController',
-        'useTradingChartController',
-        'composeChartGestures',
-        'DOUBLE_TAP_MAX_DELAY_MS',
-        'GESTURE_TEST_IDS',
-        'PAN_ACTIVATION_DP',
-        'createRectList',
-        'pushRect',
-        'buildCandleGeometry',
-        'computeCandleMetrics',
-        'createCandleMetrics',
-        'MIN_BODY_OVER_WICK_PX',
-        'batchSink',
-        'createCandleGeometryBatch',
-        'fillCandleGeometryBatch',
-        'buildGridGeometry',
-        'DEFAULT_GRID_OPTIONS',
-        'lineWidthPx',
-        'sanitizePixelRatio',
-        'snapToPixel',
-        'computeAutoScaleTarget',
-        'priceRangeChanged',
-        'PRICE_TARGET_EPSILON',
-        'shouldSnapPriceRange',
-        // P4
-        'CROSSHAIR_TEST_IDS',
-        'STICKY_DRAG_SLOP_DP',
-        'LAST_PRICE_PINNED_BOTTOM',
-        'LAST_PRICE_PINNED_NONE',
-        'LAST_PRICE_PINNED_TOP',
+        'IndicatorRegistry',
+        'MAX_INDICATOR_PERIOD',
+        'MAX_PANE_RATIO',
         'MAX_PRICE_DECIMALS',
-        'OHLC_STYLE_CAPTION',
-        'OHLC_STYLE_DOWN',
-        'OHLC_STYLE_UP',
-        'PRICE_LABEL_STYLE',
-        'TIME_LABEL_STYLE',
+        'MIN_PANE_RATIO',
+        'MIN_PERFORMANCE_SAMPLE_MS',
+        'PRICE_PANE_ID',
+        'PRICE_SOURCES',
+        'REALTIME_STATUSES',
+        'RealtimeBarAggregator',
         'TICK_WEIGHT_DAY',
         'TICK_WEIGHT_MONTH',
         'TICK_WEIGHT_TIME',
         'TICK_WEIGHT_YEAR',
+        'TIME_LABEL_CROSSHAIR',
+        'TradingChart',
+        'allowedPlacements',
         'autoPriceDecimals',
-        'centeredBaseline',
-        'clampSpan',
-        'computeCrosshair',
-        'computeLastPriceMarker',
-        'createCrosshairFrame',
-        'createLastPriceMarker',
-        'createOffsetResolver',
-        'createPriceTicks',
-        'createTimeTicks',
-        'displayDecimals',
-        'estimateBarInterval',
+        'createBucketAligner',
+        'createChartSettings',
+        'createFrameStats',
+        'createIndicatorInput',
+        'createIndicatorRegistry',
+        'createIndicatorResult',
+        'createStepIndicator',
+        'createTradingChartController',
+        'defaultChartSettings',
+        'defaultDarkTheme',
+        'defaultLightTheme',
+        'deserializeChartSettings',
+        'ensureResultCapacity',
         'formatClock',
         'formatDateTime',
+        'formatIndicatorLabel',
         'formatPercent',
         'formatPrice',
         'formatSignedPrice',
         'formatTimeTick',
         'formatVolume',
-        'generatePriceTicks',
-        'generateTimeTicks',
-        'layoutOhlcHeader',
-        'layoutPriceAxisLabels',
-        'layoutTimeAxisLabels',
-        'nearestBarIndex',
-        'nextAxisWidth',
-        'nicePriceTickStep',
-        'offsetAt',
-        'priceTickStep',
-        'priceTickTargetCount',
-        'rangesOverlap',
-        'requiredAxisWidth',
-        'selectTimeInterval',
-        'stepDecimals',
-        'thinTicksBySpacing',
-        'timeIntervalMs',
-        // P5
-        'BOLLINGER_LOWER',
-        'BOLLINGER_MIDDLE',
-        'BOLLINGER_UPPER',
-        'DEFAULT_MA_PERIOD',
-        'INDICATOR_LEGEND_STYLE_CAPTION',
-        'INDICATOR_LEGEND_STYLE_VALUE',
-        'IndicatorEngine',
-        'IndicatorRegistry',
-        'MAX_INDICATOR_PERIOD',
-        'PRICE_SOURCES',
-        'bollingerModule',
-        'buildBandFill',
-        'buildLineGeometry',
-        'createIndicatorRegistry',
-        'createIndicatorResult',
-        'createStepIndicator',
-        'emaModule',
-        'ensureResultCapacity',
-        'formatIndicatorLabel',
+        'getBucketStart',
+        'getCandleIssue',
+        'getNextBucketStart',
         'histogramPolarity',
+        'indicatorScale',
         'isFiniteValue',
-        'layoutIndicatorLegend',
+        'isRealtimeStatus',
+        'isSupportedTimeZone',
+        'isValidCandle',
+        'mergeTheme',
+        'normalizeCandles',
         'paramDefaults',
+        'parseParamValue',
+        'parseTimeframe',
         'periodParam',
+        'placementOf',
         'readSource',
-        'registerBuiltInIndicators',
+        'recordFrameInterval',
+        'resetFrameStats',
+        'resolveChartConfig',
         'resolveNumberParam',
-        'resolveOverlaySpecs',
         'resolveSourceParam',
-        'smaModule',
+        'resolveSymbolPrecision',
+        'serializeChartSettings',
+        'settingsToIndicatorInputs',
+        'snapToTickSize',
         'sourceParam',
+        'summarizeFrameStats',
+        'timeframeToMs',
         'toBandPoints',
         'toHistogramPoints',
         'toLinePoints',
         'toMultiLine',
-        'wmaModule',
+        'useTradingChartController',
+        'validateCandles',
       ].sort()
     );
   });
 
-  it('E2: exposes fixtures from the testing entry', () => {
-    // Given / When / Then
-    expect(typeof testing.generateCandles).toBe('function');
-    expect(typeof testing.createSeededRandom).toBe('function');
+  it('E2: exposes fixtures, scenes and test IDs from the testing entry', () => {
+    // Given / When
+    const names = Object.keys(testing).sort();
+    // Then
+    expect(names).toEqual(
+      [
+        'BENCHMARK_SCENARIOS',
+        'CHART_ERROR_FALLBACK_TEST_ID',
+        'CROSSHAIR_TEST_IDS',
+        'GESTURE_TEST_IDS',
+        'MAX_GENERATED_CANDLES',
+        'PANE_RESIZE_TEST_ID',
+        'createSeededRandom',
+        'generateCandles',
+      ].sort()
+    );
     expect(testing.MAX_GENERATED_CANDLES).toBeGreaterThan(100_000);
+    expect(testing.CHART_ERROR_FALLBACK_TEST_ID).toBe(
+      'fast-chart-error-fallback'
+    );
+  });
+
+  it('E3: hides renderer and geometry internals', () => {
+    // Given
+    const internals = [
+      'buildCandleGeometry',
+      'createCandleGeometryBatch',
+      'buildGridGeometry',
+      'buildHistogramGeometry',
+      'computeCrosshair',
+      'computeLastPriceMarker',
+      'pulseOpacity',
+      'snapToPixel',
+      'createRectList',
+    ];
+    // When
+    const leaked = internals.filter(exported);
+    // Then
+    expect(leaked).toEqual([]);
+  });
+
+  it('E4: hides viewport, tick and pane-layout math', () => {
+    // Given
+    const internals = [
+      'indexToX',
+      'xToIndex',
+      'priceToY',
+      'createPriceScale',
+      'getVisibleRange',
+      'computeAutoScaleTarget',
+      'createPriceTicks',
+      'createTimeTicks',
+      'createOffsetResolver',
+      'composeChartGestures',
+      'applyChartSettings',
+      'mergeCandles',
+    ];
+    // When
+    const leaked = internals.filter(exported);
+    // Then
+    expect(leaked).toEqual([]);
+  });
+
+  it('E5: test IDs and benchmark scenes live only in the testing entry', () => {
+    // Given
+    const moved = [
+      'BENCHMARK_SCENARIOS',
+      'GESTURE_TEST_IDS',
+      'CROSSHAIR_TEST_IDS',
+      'PANE_RESIZE_TEST_ID',
+      'CHART_ERROR_FALLBACK_TEST_ID',
+    ];
+    // When
+    const leaked = moved.filter(exported);
+    // Then
+    expect(leaked).toEqual([]);
+  });
+
+  it('E6: P9 additions are callable', () => {
+    // Given / When / Then
+    expect(typeof api.ChartErrorBoundary).toBe('function');
+    expect(typeof api.createBucketAligner).toBe('function');
+    expect(typeof api.isSupportedTimeZone).toBe('function');
+    expect(api.snapToTickSize(1.234, 0.5)).toBe(1);
+    expect(api.MIN_PERFORMANCE_SAMPLE_MS).toBe(1000);
   });
 });

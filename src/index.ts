@@ -1,169 +1,51 @@
-// Components
+/**
+ * Public API of `react-native-fast-chart` (see docs/API.md).
+ *
+ * Everything exported here follows the semver policy in CHANGELOG.md.
+ * Renderer, geometry, tick-generation and viewport-math modules are
+ * internal and may change in any release; test fixtures, benchmark
+ * scenes and test IDs live in `react-native-fast-chart/testing`.
+ */
+
+// ─── Components ──────────────────────────────────────────────────────────
 export {
   TradingChart,
   type TradingChartProps,
 } from './components/TradingChart';
+export {
+  ChartErrorBoundary,
+  type ChartErrorBoundaryProps,
+  type ChartErrorFallback,
+} from './components/ChartErrorBoundary';
 
-// Chart handle / controller (P3 subset of spec §21)
+// ─── Controller / handle ─────────────────────────────────────────────────
 export {
   createTradingChartController,
   useTradingChartController,
   type TradingChartHandle,
 } from './engine/createTradingChartController';
 export type {
+  ChartSettingsExtras,
+  SetDataOptions,
+  TradingChartController,
+  UpsertBarResult,
+  ViewportResetPolicy,
+} from './core/ChartController';
+export type {
   ChartSharedState,
   ViewportOptions,
 } from './engine/ChartSharedState';
 export type { UiCandleSeries } from './data/UiCandleSeries';
-
-// Gestures
-export {
-  composeChartGestures,
-  DOUBLE_TAP_MAX_DELAY_MS,
-  GESTURE_TEST_IDS,
-  PAN_ACTIVATION_DP,
-} from './interaction/useChartGestures';
-export {
-  CROSSHAIR_TEST_IDS,
-  STICKY_DRAG_SLOP_DP,
-} from './interaction/useCrosshairGesture';
+export type {
+  UiIndicatorSeries,
+  UiIndicatorSet,
+} from './indicators/UiIndicatorSet';
 export type {
   CrosshairChange,
   CrosshairChangeHandler,
 } from './interaction/useCrosshairCallback';
 
-// Render model + geometry (renderer-agnostic, worklet-compatible)
-export type {
-  AxisLabelGeometry,
-  BandGeometry,
-  TextBoxMetrics,
-  TextSink,
-  CandleDrawMode,
-  CandleGeometryBatch,
-  ChartRenderModel,
-  CrosshairRenderModel,
-  GridLineGeometry,
-  GridLineOrientation,
-  HistogramGeometry,
-  LineGeometry,
-  PaneRenderModel,
-  RectList,
-  TimeAxisRenderModel,
-} from './render/RenderModel';
-export { createRectList, pushRect } from './render/RenderModel';
-export {
-  buildCandleGeometry,
-  computeCandleMetrics,
-  createCandleMetrics,
-  MIN_BODY_OVER_WICK_PX,
-  type CandleGeometrySink,
-  type CandleMetrics,
-  type CandleSeriesView,
-} from './render/candles/CandleGeometry';
-export {
-  batchSink,
-  createCandleGeometryBatch,
-  fillCandleGeometryBatch,
-} from './render/candles/CandleGeometryBatch';
-export {
-  buildGridGeometry,
-  DEFAULT_GRID_OPTIONS,
-  type GridOptions,
-  type GridPriceTicks,
-  type GridSink,
-  type GridTimeTicks,
-} from './render/grid/GridGeometry';
-export { centeredBaseline } from './render/RenderModel';
-export {
-  layoutPriceAxisLabels,
-  PRICE_LABEL_STYLE,
-  type PriceAxisLayout,
-  type ReservedSpan,
-} from './render/axes/PriceAxisRenderer';
-export {
-  layoutTimeAxisLabels,
-  TIME_LABEL_STYLE,
-  type TimeAxisLayout,
-} from './render/axes/TimeAxisRenderer';
-export {
-  computeLastPriceMarker,
-  createLastPriceMarker,
-  LAST_PRICE_PINNED_BOTTOM,
-  LAST_PRICE_PINNED_NONE,
-  LAST_PRICE_PINNED_TOP,
-  type LastPriceMarker,
-} from './render/overlays/LastPriceRenderer';
-export {
-  computeCrosshair,
-  createCrosshairFrame,
-  nearestBarIndex,
-  type CrosshairFrame,
-} from './render/overlays/CrosshairRenderer';
-export {
-  layoutOhlcHeader,
-  OHLC_STYLE_CAPTION,
-  OHLC_STYLE_DOWN,
-  OHLC_STYLE_UP,
-  type OhlcHeaderLayout,
-} from './render/overlays/OHLCHeaderRenderer';
-
-// Axes: ticks + formatting (pure, worklet-compatible)
-export {
-  autoPriceDecimals,
-  displayDecimals,
-  formatPercent,
-  formatPrice,
-  formatSignedPrice,
-  formatVolume,
-  MAX_PRICE_DECIMALS,
-  stepDecimals,
-} from './axes/PriceFormat';
-export {
-  createPriceTicks,
-  generatePriceTicks,
-  nicePriceTickStep,
-  priceTickStep,
-  priceTickTargetCount,
-  type PriceTicks,
-} from './axes/PriceTicks';
-export {
-  createTimeTicks,
-  estimateBarInterval,
-  generateTimeTicks,
-  selectTimeInterval,
-  timeIntervalMs,
-  type TimeColumn,
-  type TimeTicks,
-} from './axes/TimeTicks';
-export {
-  formatClock,
-  formatDateTime,
-  formatTimeTick,
-  TICK_WEIGHT_DAY,
-  TICK_WEIGHT_MONTH,
-  TICK_WEIGHT_TIME,
-  TICK_WEIGHT_YEAR,
-} from './axes/TimeFormat';
-export {
-  createOffsetResolver,
-  offsetAt,
-  type ChartTimeZone,
-  type OffsetResolver,
-} from './axes/TimeZone';
-export {
-  clampSpan,
-  rangesOverlap,
-  thinTicksBySpacing,
-  type WeightedTicks,
-} from './axes/LabelCollision';
-export { nextAxisWidth, requiredAxisWidth } from './axes/AxisWidth';
-export {
-  lineWidthPx,
-  sanitizePixelRatio,
-  snapToPixel,
-} from './render/PixelSnap';
-
-// Core types
+// ─── Core types + configuration ──────────────────────────────────────────
 export type {
   Candle,
   LogicalRange,
@@ -182,26 +64,134 @@ export {
   type ChartConfig,
   type ChartCrosshairConfig,
   type ChartDebugConfig,
-  type ChartOverlaysConfig,
-  type ChartRealtimeConfig,
   type ChartHistoryConfig,
-  type CrosshairMode,
   type ChartInteractionConfig,
   type ChartLayoutConfig,
+  type ChartOverlaysConfig,
+  type ChartRealtimeConfig,
+  type ChartTelemetryConfig,
   type ChartViewportConfig,
+  type CrosshairMode,
+  type DailyBarsTimeZone,
 } from './core/ChartConfig';
-export type {
-  ChartSettingsExtras,
-  SetDataOptions,
-  TradingChartController,
-  UpsertBarResult,
-  ViewportResetPolicy,
-} from './core/ChartController';
+export type { DeepPartial } from './utils/deepMerge';
 
-// Indicators (P5): contracts, registry, built-ins, engine, adapters
+// ─── Precision, formatting, time zones ───────────────────────────────────
+export {
+  resolveSymbolPrecision,
+  snapToTickSize,
+  type ChartSymbolConfig,
+  type ResolvedPrecision,
+} from './axes/SymbolPrecision';
+export {
+  TIME_LABEL_CROSSHAIR,
+  type PriceFormatter,
+  type TimeFormatter,
+} from './axes/Formatters';
+export {
+  autoPriceDecimals,
+  formatPercent,
+  formatPrice,
+  formatSignedPrice,
+  formatVolume,
+  MAX_PRICE_DECIMALS,
+} from './axes/PriceFormat';
+export {
+  formatClock,
+  formatDateTime,
+  formatTimeTick,
+  TICK_WEIGHT_DAY,
+  TICK_WEIGHT_MONTH,
+  TICK_WEIGHT_TIME,
+  TICK_WEIGHT_YEAR,
+} from './axes/TimeFormat';
+export { type ChartTimeZone } from './axes/TimeZone';
+export { isSupportedTimeZone } from './axes/ZoneTable';
+
+// ─── Errors + telemetry ──────────────────────────────────────────────────
+export type {
+  ChartErrorEvent,
+  ChartErrorHandler,
+  ChartErrorSource,
+} from './core/ChartErrors';
+export {
+  MIN_PERFORMANCE_SAMPLE_MS,
+  type ChartPerformanceSample,
+  type ChartPerformanceSampleHandler,
+} from './performance/PerformanceSampler';
+export {
+  createFrameStats,
+  DEFAULT_FRAME_TARGET_MS,
+  recordFrameInterval,
+  resetFrameStats,
+  summarizeFrameStats,
+  type FrameStatsAccumulator,
+  type FrameStatsSummary,
+} from './performance/FrameStats';
+export type {
+  ChartMetrics,
+  ChartMetricsSnapshot,
+  MetricChannel,
+} from './performance/ChartMetrics';
+export type { TimingStats } from './performance/RenderProfiler';
+
+// ─── Data: validation, timeframes, realtime aggregation ──────────────────
+export {
+  getCandleIssue,
+  isValidCandle,
+  normalizeCandles,
+  validateCandles,
+  type CandleIssue,
+  type CandleIssueReason,
+  type CandleValidationResult,
+  type NormalizeCandlesOptions,
+  type NormalizeCandlesResult,
+} from './data/CandleValidation';
+export type {
+  CandleStore,
+  CandleStoreChange,
+  CandleStoreChangeKind,
+  CandleStoreListener,
+} from './data/CandleStore';
+export type { CandleColumns } from './data/CandleBuffer';
+export type { MergeConflictPolicy, MergeResult } from './data/HistoryMerge';
+export {
+  getBucketStart,
+  getNextBucketStart,
+  parseTimeframe,
+  timeframeToMs,
+  type TimeframeSpec,
+  type TimeframeUnit,
+} from './data/Timeframe';
+export { createBucketAligner, type BucketAligner } from './data/BucketAligner';
+export {
+  RealtimeBarAggregator,
+  type AggregateResult,
+  type KlineUpdate,
+  type RealtimeBarAggregatorOptions,
+  type SnapshotMode,
+} from './data/RealtimeBarAggregator';
+
+// ─── History pagination + realtime status ────────────────────────────────
+export type {
+  HistoryLoader,
+  HistoryLoadState,
+  LoadMoreHandler,
+  LoadMoreRequest,
+  LoadMoreResult,
+} from './history/HistoryLoader';
+export {
+  isRealtimeStatus,
+  REALTIME_STATUSES,
+  type RealtimeStatus,
+  type RealtimeStatusStore,
+} from './realtime/RealtimeStatus';
+
+// ─── Indicators: inputs, catalog, custom indicators ──────────────────────
 export {
   PRICE_SOURCES,
   type BandPoint,
+  type HistogramColorMode,
   type HistogramPoint,
   type HistogramPolarity,
   type Indicator,
@@ -214,11 +204,15 @@ export {
   type PriceSource,
 } from './indicators/Indicator';
 export {
+  indicatorScale,
   IndicatorRegistry,
+  type IndicatorGuides,
   type IndicatorMeta,
   type IndicatorModule,
   type IndicatorOutput,
   type IndicatorPlacement,
+  type IndicatorScaleKind,
+  type IndicatorScaleSpec,
   type IndicatorSeriesDescriptor,
 } from './indicators/IndicatorRegistry';
 export {
@@ -246,104 +240,27 @@ export {
   readSource,
 } from './indicators/IndicatorSeries';
 export {
-  createIndicatorRegistry,
-  registerBuiltInIndicators,
-} from './indicators/builtins';
-export {
-  DEFAULT_MA_PERIOD,
-  emaModule,
-  smaModule,
-  wmaModule,
-  type MovingAverageConfig,
-} from './indicators/builtins/MovingAverages';
-export {
-  BOLLINGER_LOWER,
-  BOLLINGER_MIDDLE,
-  BOLLINGER_UPPER,
-  bollingerModule,
-  type BollingerConfig,
-} from './indicators/builtins/Bollinger';
-export {
-  IndicatorEngine,
-  type IndicatorEngineOptions,
-  type IndicatorPatch,
-  type IndicatorUpdate,
-  type IndicatorUpdateListener,
-} from './indicators/IndicatorEngine';
-export type { IndicatorEntry } from './indicators/IndicatorDefinitions';
-export {
   histogramPolarity,
   toBandPoints,
   toHistogramPoints,
   toLinePoints,
   toMultiLine,
 } from './indicators/IndicatorAdapters';
+export { createIndicatorRegistry } from './indicators/builtins';
 export type {
-  UiIndicatorSeries,
-  UiIndicatorSet,
-} from './indicators/UiIndicatorSet';
-export {
-  buildBandFill,
-  buildLineGeometry,
-  type FillPathSink,
-  type LinePathSink,
-} from './render/indicators/LineGeometry';
-export {
-  resolveOverlaySpecs,
-  type OverlayRenderSpec,
-} from './render/indicators/OverlayRenderSpec';
-export {
-  INDICATOR_LEGEND_STYLE_CAPTION,
-  INDICATOR_LEGEND_STYLE_VALUE,
-  layoutIndicatorLegend,
-  type IndicatorLegendItem,
-  type IndicatorLegendLayout,
-} from './render/overlays/IndicatorLegendRenderer';
-export {
-  atrModule,
-  trueRange,
-  type AtrConfig,
-} from './indicators/builtins/Atr';
-export {
-  MACD_HISTOGRAM,
-  MACD_HISTOGRAM_COLORS,
-  MACD_LINE,
-  MACD_SIGNAL,
-  macdModule,
-  type MacdConfig,
-} from './indicators/builtins/Macd';
-export {
-  rsiFromAverages,
-  rsiModule,
-  type RsiConfig,
-} from './indicators/builtins/Rsi';
-export {
-  VOLUME_MA,
-  VOLUME_VALUE,
-  volumeModule,
-  type VolumeConfig,
-} from './indicators/builtins/Volume';
-export {
-  indicatorScale,
-  type IndicatorGuides,
-  type IndicatorScaleKind,
-  type IndicatorScaleSpec,
-} from './indicators/IndicatorRegistry';
-export type { HistogramColorMode } from './indicators/Indicator';
-export {
-  buildHistogramGeometry,
-  histogramBucket,
-  histogramBucketCount,
-  type HistogramSink,
-} from './render/indicators/HistogramGeometry';
-export { formatIndicatorValue } from './render/overlays/IndicatorLegendRenderer';
+  IndicatorEngine,
+  IndicatorPatch,
+  IndicatorUpdate,
+  IndicatorUpdateListener,
+} from './indicators/IndicatorEngine';
+export type { IndicatorEntry } from './indicators/IndicatorDefinitions';
+export type {
+  IndicatorComputeCounts,
+  IndicatorComputeStats,
+} from './indicators/IndicatorStats';
 
-// Panes (P6): model, manager, layout, scales, render specs
+// ─── Panes ───────────────────────────────────────────────────────────────
 export {
-  DEFAULT_INDICATOR_PANE_MIN_HEIGHT,
-  DEFAULT_INDICATOR_PANE_RATIO,
-  DEFAULT_PRICE_PANE_MIN_HEIGHT,
-  DEFAULT_PRICE_PANE_RATIO,
   MAX_PANE_RATIO,
   MIN_PANE_RATIO,
   PRICE_PANE_ID,
@@ -351,198 +268,9 @@ export {
   type PaneInput,
   type PaneType,
 } from './panes/Pane';
-export { PaneManager, type PaneIndicatorRef } from './panes/PaneManager';
-export {
-  computePaneLayout,
-  dragSeparator,
-  hitTestSeparator,
-  paneIndexAt,
-  type PaneLayoutFrame,
-  type PaneLayoutSpec,
-} from './panes/PaneLayout';
-export {
-  computePaneRange,
-  FIXED_SCALE_PADDING,
-  PANE_SCALE_PADDING,
-  VOLUME_SCALE_HEADROOM,
-} from './panes/PaneScale';
-export {
-  DEFAULT_PANE_FORMAT,
-  resolvePaneSpecs,
-  type PaneGuideSpec,
-  type PaneRenderSpec,
-  type PaneValueFormat,
-} from './render/panes/PaneRenderSpec';
-export {
-  resolveIndicatorDrawSpec,
-  type HistogramSpec,
-  type IndicatorDrawSpec,
-} from './render/indicators/OverlayRenderSpec';
-export { PANE_RESIZE_TEST_ID } from './interaction/usePaneResizeGesture';
+export type { PaneIndicatorRef, PaneManager } from './panes/PaneManager';
 
-// Data validation
-export {
-  getBarValuesIssue,
-  getCandleIssue,
-  isValidCandle,
-  normalizeCandles,
-  validateCandles,
-  type CandleIssue,
-  type CandleIssueReason,
-  type CandleValidationResult,
-  type NormalizeCandlesOptions,
-  type NormalizeCandlesResult,
-} from './data/CandleValidation';
-
-// Data engine
-export {
-  CandleStore,
-  type CandleStoreChange,
-  type CandleStoreChangeKind,
-  type CandleStoreListener,
-} from './data/CandleStore';
-export type { CandleColumns } from './data/CandleBuffer';
-export {
-  mergeCandles,
-  type MergeConflictPolicy,
-  type MergeOptions,
-  type MergeResult,
-} from './data/HistoryMerge';
-export {
-  getBucketStart,
-  getNextBucketStart,
-  parseTimeframe,
-  timeframeToMs,
-  type TimeframeSpec,
-  type TimeframeUnit,
-} from './data/Timeframe';
-export {
-  RealtimeBarAggregator,
-  type AggregateResult,
-  type KlineUpdate,
-  type RealtimeBarAggregatorOptions,
-  type SnapshotMode,
-} from './data/RealtimeBarAggregator';
-
-// Viewport engine (worklet-compatible math)
-export {
-  barSpacingForRange,
-  candleBodyWidth,
-  clampBarSpacing,
-  clampRightOffset,
-  elasticRightOffset,
-  indexToX,
-  isLastBarVisible,
-  maxRightOffset,
-  minRightOffset,
-  panRightOffset,
-  rightEdgeIndex,
-  rightOffsetForRange,
-  visibleBarCount,
-  xToIndex,
-  xToNearestIndex,
-  zoomRightOffset,
-  type TimeScaleOptions,
-  type TimeScaleState,
-} from './viewport/TimeScale';
-export {
-  DEFAULT_OVERSCAN_BARS,
-  getVisibleLogicalRange,
-  getVisibleRange,
-  type VisibleRange,
-} from './viewport/VisibleRange';
-export {
-  createPriceScale,
-  DEFAULT_PRICE_PADDING,
-  DEGENERATE_RANGE_RATIO,
-  FALLBACK_PRICE_RANGE,
-  MAX_ABS_PRICE,
-  normalizePriceRange,
-  priceToY,
-  yToPrice,
-  type PriceScaleMode,
-  type PriceScaleOptions,
-  type PriceScaleSnapshot,
-} from './viewport/PriceScale';
-export { candleRangeMinMax, rangeMinMax } from './viewport/AutoScale';
-export {
-  computeAutoScaleTarget,
-  priceRangeChanged,
-  PRICE_TARGET_EPSILON,
-  shouldSnapPriceRange,
-} from './viewport/AutoScaleTarget';
-
-// Theme
-export type { ChartTheme, ColorValue } from './theme/ChartTheme';
-export { defaultDarkTheme } from './theme/defaultDarkTheme';
-export { defaultLightTheme } from './theme/defaultLightTheme';
-export { mergeTheme, type ChartThemeOverride } from './theme/mergeTheme';
-
-// Performance instrumentation
-export {
-  createRenderProfiler,
-  defaultClock,
-  NOOP_PROFILER,
-  type Clock,
-  type RenderProfiler,
-  type RenderProfilerOptions,
-  type TimingStats,
-} from './performance/RenderProfiler';
-export {
-  createChartMetrics,
-  METRIC_CHANNELS,
-  type ChartMetrics,
-  type ChartMetricsOptions,
-  type ChartMetricsSnapshot,
-  type MetricChannel,
-} from './performance/ChartMetrics';
-export {
-  BENCHMARK_SCENARIOS,
-  type BenchmarkIndicatorSpec,
-  type BenchmarkScenario,
-  type BenchmarkSceneId,
-} from './performance/BenchmarkScenarios';
-export {
-  createFrameStats,
-  DEFAULT_FRAME_TARGET_MS,
-  droppedFrames,
-  recordFrameInterval,
-  resetFrameStats,
-  summarizeFrameStats,
-  type FrameStatsAccumulator,
-  type FrameStatsSummary,
-} from './performance/FrameStats';
-
-// Utilities
-export type { DeepPartial } from './utils/deepMerge';
-
-// Controller, realtime, pagination and settings (P7)
-export {
-  applyCandleDiff,
-  diffCandles,
-  type AppliedCandleDiff,
-  type CandleDiff,
-} from './data/CandleDiff';
-export {
-  appendOffsetShift,
-  barsBeforeView,
-  isNearHistoryStart,
-  shiftIndexForPrepend,
-} from './viewport/ViewportShift';
-export {
-  HistoryLoader,
-  type HistoryLoaderOptions,
-  type HistoryLoadState,
-  type LoadMoreHandler,
-  type LoadMoreRequest,
-  type LoadMoreResult,
-} from './history/HistoryLoader';
-export {
-  isRealtimeStatus,
-  REALTIME_STATUSES,
-  RealtimeStatusStore,
-  type RealtimeStatus,
-} from './realtime/RealtimeStatus';
+// ─── Settings persistence + indicator catalog helpers ────────────────────
 export {
   CHART_SETTINGS_VERSION,
   createChartSettings,
@@ -558,7 +286,6 @@ export {
   type IndicatorSettingValue,
   type PaneSettings,
 } from './settings/ChartSettings';
-export { applyChartSettings } from './settings/ApplySettings';
 export {
   allowedPlacements,
   createIndicatorInput,
@@ -567,14 +294,9 @@ export {
   type CreateIndicatorOptions,
   type ParsedParamValue,
 } from './settings/IndicatorCatalog';
-export type {
-  IndicatorComputeCounts,
-  IndicatorComputeStats,
-} from './indicators/IndicatorStats';
-export {
-  PULSE_MAX_OPACITY,
-  PULSE_MAX_RADIUS,
-  PULSE_MIN_RADIUS,
-  pulseOpacity,
-  pulseRadius,
-} from './render/overlays/LastPricePulse';
+
+// ─── Theme ───────────────────────────────────────────────────────────────
+export type { ChartTheme, ColorValue } from './theme/ChartTheme';
+export { defaultDarkTheme } from './theme/defaultDarkTheme';
+export { defaultLightTheme } from './theme/defaultLightTheme';
+export { mergeTheme, type ChartThemeOverride } from './theme/mergeTheme';

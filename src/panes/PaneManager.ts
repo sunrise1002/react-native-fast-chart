@@ -42,6 +42,11 @@ export class PaneManager {
     return this.panes.find((p) => p.id === id);
   }
 
+  /** `true` for the price pane and panes created by `add` (kept when empty). */
+  isExplicit(id: string): boolean {
+    return this.explicit.has(id) && this.getPane(id) !== undefined;
+  }
+
   subscribe(listener: () => void): () => void {
     return this.listeners.add(listener);
   }

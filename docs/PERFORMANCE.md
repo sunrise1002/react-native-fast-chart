@@ -7,11 +7,11 @@ How the chart stays at 60 fps and how to measure it (phase P8, spec §17.5,
 
 There are three tools. They answer different questions.
 
-| Tool | Command / location | Measures | Use it for |
-| --- | --- | --- | --- |
-| Node micro-benchmarks | `yarn bench` | Pure TS hot paths (geometry, ticks, labels, pyramids, conflation, indicators) on V8 | Regressions in the pure modules; before/after of an optimization |
-| CanvasKit benchmarks | `yarn bench:skia` | The same geometry drawn with real Skia (CanvasKit WASM, CPU raster) | Choosing between Skia strategies (dynamic paths vs cached paths vs Picture) |
-| Benchmark screen | example app → **Benchmark** tab | UI and JS frame intervals on a device | The real target: frame budget, dropped frames, memory |
+| Tool                  | Command / location              | Measures                                                                            | Use it for                                                                  |
+| --------------------- | ------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Node micro-benchmarks | `yarn bench`                    | Pure TS hot paths (geometry, ticks, labels, pyramids, conflation, indicators) on V8 | Regressions in the pure modules; before/after of an optimization            |
+| CanvasKit benchmarks  | `yarn bench:skia`               | The same geometry drawn with real Skia (CanvasKit WASM, CPU raster)                 | Choosing between Skia strategies (dynamic paths vs cached paths vs Picture) |
+| Benchmark screen      | example app → **Benchmark** tab | UI and JS frame intervals on a device                                               | The real target: frame budget, dropped frames, memory                       |
 
 ### Node micro-benchmarks (`benchmarks/`)
 
@@ -55,6 +55,7 @@ There are three tools. They answer different questions.
 
   The motion is written to the chart's shared values from a UI-thread
   `useFrameCallback`, so runs are repeatable without touch input.
+
 - The scene's realtime feed (D: 20 updates/s, §36: 20 updates/s) runs for
   the whole scene.
 - Reported per scene:
@@ -76,31 +77,31 @@ There are three tools. They answer different questions.
 
 ### 100k bars, fully zoomed out (400 dp plot, pixel ratio 3)
 
-| Work per frame | Before P8 | After P8 | Speed-up |
-| --- | ---: | ---: | ---: |
-| Candle frame (range + geometry) | 5 293 µs (100 000 bars) | 16.5 µs (≤ 600 buckets) | ~320× |
-| EMA line frame | 1 753 µs (100 000 points) | 11.9 µs (min/max envelope) | ~150× |
-| Time ticks over the visible bars | 841 µs (linear scan) | 2.7 µs (sparse) | ~310× |
-| Visible price range (auto-scale, pane scales) | 101 µs (linear) | 1.7 µs (pyramid query) | ~60× |
+| Work per frame                                |                 Before P8 |                   After P8 | Speed-up |
+| --------------------------------------------- | ------------------------: | -------------------------: | -------: |
+| Candle frame (range + geometry)               |   5 293 µs (100 000 bars) |    16.5 µs (≤ 600 buckets) |    ~320× |
+| EMA line frame                                | 1 753 µs (100 000 points) | 11.9 µs (min/max envelope) |    ~150× |
+| Time ticks over the visible bars              |      841 µs (linear scan) |            2.7 µs (sparse) |    ~310× |
+| Visible price range (auto-scale, pane scales) |           101 µs (linear) |     1.7 µs (pyramid query) |     ~60× |
 
 ### Other P8 paths
 
-| Benchmark | Before | After |
-| --- | ---: | ---: |
-| Price labels of a panning frame (format + measure) | 0.98 µs | 0.21 µs (LabelCache hit) |
-| Pyramid build, 100k bars (one-off, on data reset) | — | 0.95 ms |
-| Pyramid re-sync of the last bar (every realtime tick) | — | 0.48 µs |
+| Benchmark                                             |  Before |                    After |
+| ----------------------------------------------------- | ------: | -----------------------: |
+| Price labels of a panning frame (format + measure)    | 0.98 µs | 0.21 µs (LabelCache hit) |
+| Pyramid build, 100k bars (one-off, on data reset)     |       — |                  0.95 ms |
+| Pyramid re-sync of the last bar (every realtime tick) |       — |                  0.48 µs |
 
 ### Baselines, unchanged paths (normal zoom)
 
-| Benchmark | Baseline (µs/op) | After P8 (µs/op) |
-| --- | ---: | ---: |
-| Candle frame, 52 bars (8 dp) | 2.09 | 2.17 |
-| Candle frame, 802 bars (0.5 dp) | 15.8 | 16.2 |
-| Axes frame, 8 dp | 2.94 | 3.05 |
-| Viewport frame, 540 bars | 0.68 | 0.75 |
-| Sparse-table query | 0.023 | 0.024 |
-| §36 tick (store + EMA 20/50 + pack/apply) | 0.91 | 0.89 |
+| Benchmark                                 | Baseline (µs/op) | After P8 (µs/op) |
+| ----------------------------------------- | ---------------: | ---------------: |
+| Candle frame, 52 bars (8 dp)              |             2.09 |             2.17 |
+| Candle frame, 802 bars (0.5 dp)           |             15.8 |             16.2 |
+| Axes frame, 8 dp                          |             2.94 |             3.05 |
+| Viewport frame, 540 bars                  |             0.68 |             0.75 |
+| Sparse-table query                        |            0.023 |            0.024 |
+| §36 tick (store + EMA 20/50 + pack/apply) |             0.91 |             0.89 |
 
 At normal zoom P8 changes nothing measurable; the differences are within
 the noise. Conflation only kicks in below 2 device px per bar. The
@@ -111,11 +112,11 @@ does not include the label cache.
 
 Per frame, CanvasKit CPU raster at 1200×900:
 
-| Strategy | 52 bars (8 dp) | 802 bars (0.5 dp) |
-| --- | ---: | ---: |
-| Rebuild the 4 candle paths from data every frame (**kept**) | 210–280 µs | 460–530 µs |
-| Build once, pan by `translate` + `drawPath` | 165–255 µs | 230–330 µs |
-| Record a Picture once, replay translated | 167–255 µs | 235–333 µs |
+| Strategy                                                    | 52 bars (8 dp) | 802 bars (0.5 dp) |
+| ----------------------------------------------------------- | -------------: | ----------------: |
+| Rebuild the 4 candle paths from data every frame (**kept**) |     210–280 µs |        460–530 µs |
+| Build once, pan by `translate` + `drawPath`                 |     165–255 µs |        230–330 µs |
+| Record a Picture once, replay translated                    |     167–255 µs |        235–333 µs |
 
 **Zoomed-out 100k:** drawing every bar costs 45 400 µs per frame; the
 conflated frame costs 380–425 µs (about 110× faster).
@@ -130,6 +131,7 @@ conflated frame costs 380–425 µs (about 110× faster).
   - realtime ticks change the last bar.
 
   Every one of these invalidates the cache.
+
 - A cache would also need an off-screen margin of bars. That means more
   rasterized geometry per frame and more memory.
 - The possible saving is 20–45 µs at normal zoom and about 200 µs at
@@ -148,16 +150,16 @@ conflated frame costs 380–425 µs (about 110× faster).
 "Per frame" means per run of a UI mapper (`useDerivedValue`), i.e. per
 frame while its inputs change.
 
-| Layer | Before P8 (allocated every frame) | After P8 |
-| --- | --- | --- |
-| Candles (`useCandlePaths`) | time/price scale objects, visible range, candle metrics, rect | none: scratch in `renderCache.frame`. The only allocation is the returned frame object |
-| Indicators (`useIndicatorLayer`) | time/price scale objects, visible range | shared scratch; one small context object per frame |
-| Pane layer (`usePaneLayer`) | scales, metrics, range | scratch; histogram metrics reused |
-| Pane scales (`usePaneScales`) | scales, range, per-pane range closure | scratch; the output `scales` array (it is the frame value) |
-| Auto-scale reaction | closure extender, time scale | scratch; pyramid-backed range |
-| Axes (`useAxesLayer`) | price/time tick buffers (a 256-slot `Float64Array` ×3, 64-slot ×1), last-price marker, offset resolver, visible range, rect, stack scale, grid options, a label `string[]` ×2–3, **one `formatPrice` / `formatTimeTick` string + `measureText` per label** | all buffers in `createAxesResources` (reused). Label text/width come from `LabelCache`, so a label is formatted once. What remains: the grid/text sink closures (2 small objects) and the returned frame |
-| Pane axes (`paneAxes`) | label array, a string + measure per label | reused label array, `LabelCache` |
-| Crosshair (`useOverlayLayer`) | crosshair frame, time/price scale, offset resolver | reused; the 2 label strings are inherent (the values change with the finger) |
+| Layer                            | Before P8 (allocated every frame)                                                                                                                                                                                                                          | After P8                                                                                                                                                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Candles (`useCandlePaths`)       | time/price scale objects, visible range, candle metrics, rect                                                                                                                                                                                              | none: scratch in `renderCache.frame`. The only allocation is the returned frame object                                                                                                                   |
+| Indicators (`useIndicatorLayer`) | time/price scale objects, visible range                                                                                                                                                                                                                    | shared scratch; one small context object per frame                                                                                                                                                       |
+| Pane layer (`usePaneLayer`)      | scales, metrics, range                                                                                                                                                                                                                                     | scratch; histogram metrics reused                                                                                                                                                                        |
+| Pane scales (`usePaneScales`)    | scales, range, per-pane range closure                                                                                                                                                                                                                      | scratch; the output `scales` array (it is the frame value)                                                                                                                                               |
+| Auto-scale reaction              | closure extender, time scale                                                                                                                                                                                                                               | scratch; pyramid-backed range                                                                                                                                                                            |
+| Axes (`useAxesLayer`)            | price/time tick buffers (a 256-slot `Float64Array` ×3, 64-slot ×1), last-price marker, offset resolver, visible range, rect, stack scale, grid options, a label `string[]` ×2–3, **one `formatPrice` / `formatTimeTick` string + `measureText` per label** | all buffers in `createAxesResources` (reused). Label text/width come from `LabelCache`, so a label is formatted once. What remains: the grid/text sink closures (2 small objects) and the returned frame |
+| Pane axes (`paneAxes`)           | label array, a string + measure per label                                                                                                                                                                                                                  | reused label array, `LabelCache`                                                                                                                                                                         |
+| Crosshair (`useOverlayLayer`)    | crosshair frame, time/price scale, offset resolver                                                                                                                                                                                                         | reused; the 2 label strings are inherent (the values change with the finger)                                                                                                                             |
 
 Remaining per-frame allocations are O(1) small objects. The returned
 frame objects are needed: a new identity is what tells the next mapper
@@ -194,14 +196,14 @@ produced by the frame itself. They are not garbage in the JS sense.
 
 Each layer is a mapper that captures only the shared values it reads:
 
-| Layer | Rebuilt by |
-| --- | --- |
-| Candles | series, bar spacing, right offset, plot size, price range |
-| Indicators | the above + indicator set |
-| Pane scales / pane layer | series, indicators, bar spacing, right offset, plot width, pane layout |
-| Axes + grid | series, bar spacing, right offset, plot size, price range, stack height, bar interval, pane scales |
-| Crosshair | crosshair index / Y / opacity (+ viewport while visible) |
-| Legend | crosshair index / opacity, indicators |
+| Layer                    | Rebuilt by                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| Candles                  | series, bar spacing, right offset, plot size, price range                                          |
+| Indicators               | the above + indicator set                                                                          |
+| Pane scales / pane layer | series, indicators, bar spacing, right offset, plot width, pane layout                             |
+| Axes + grid              | series, bar spacing, right offset, plot size, price range, stack height, bar interval, pane scales |
+| Crosshair                | crosshair index / Y / opacity (+ viewport while visible)                                           |
+| Legend                   | crosshair index / opacity, indicators                                                              |
 
 - Moving the crosshair re-runs **only** the crosshair and legend layers.
   Test LI01 asserts that the candle, axes, indicator and pane-scale
@@ -260,14 +262,14 @@ Each layer is a mapper that captures only the shared values it reads:
 - The frame cost is bounded by the plot width, not the bar count (§2).
 - Memory for 100k bars, measured on the Node build of the same code:
 
-| Buffer | Size | Notes |
-| --- | ---: | --- |
-| `CandleStore` columns (JS thread) | 6.3 MB | 6 × `Float64Array` + growth headroom |
-| `UiCandleSeries` (UI thread copy) | 4.6 MB | 6 columns + realtime headroom |
-| Candle min/max pyramid (UI) | 2.0 MB | 2 × `Float64Array(capacity)`, capacity = next power of two ≥ bars → ≈ 16 B × capacity, ≈ 21 B/bar at 100k |
-| Pyramid per drawn indicator output (UI, lazy) | ≤ 2.0 MB each | only outputs drawn while their range needs it |
-| Conflation buffers | ~50 KB | grow to the bucket count (≈ plot px / 2) |
-| Label caches | ~40 KB + label strings | 3 × 512 slots |
+| Buffer                                        |                   Size | Notes                                                                                                     |
+| --------------------------------------------- | ---------------------: | --------------------------------------------------------------------------------------------------------- |
+| `CandleStore` columns (JS thread)             |                 6.3 MB | 6 × `Float64Array` + growth headroom                                                                      |
+| `UiCandleSeries` (UI thread copy)             |                 4.6 MB | 6 columns + realtime headroom                                                                             |
+| Candle min/max pyramid (UI)                   |                 2.0 MB | 2 × `Float64Array(capacity)`, capacity = next power of two ≥ bars → ≈ 16 B × capacity, ≈ 21 B/bar at 100k |
+| Pyramid per drawn indicator output (UI, lazy) |          ≤ 2.0 MB each | only outputs drawn while their range needs it                                                             |
+| Conflation buffers                            |                 ~50 KB | grow to the bucket count (≈ plot px / 2)                                                                  |
+| Label caches                                  | ~40 KB + label strings | 3 × 512 slots                                                                                             |
 
 - Pyramids are rebuilt on data resets (0.95 ms for 100k bars). Prepends
   cause a full rebuild; appends and ticks re-sync only the tail.
@@ -287,3 +289,76 @@ Each layer is a mapper that captures only the shared values it reads:
 - The CanvasKit numbers are WASM + CPU raster. The Skia GPU backend on
   devices changes the absolute costs, but not the conclusion that
   geometry size, not cache strategy, dominates.
+
+## 10. Manual profiling on devices
+
+Use this procedure before a release and after any change to the render
+path. Always measure a **release** build on a physical device. Simulators
+and emulators don't have a representative GPU or refresh rate.
+
+### Common steps
+
+1. Build a release build of the example app:
+   - iOS: `npx expo run:ios --configuration Release --device`;
+   - Android: `npx expo run:android --variant release`.
+2. Open **Benchmark → Run all** and note the per-scene UI/JS avg, p95,
+   max and dropped frames (§1). Repeat 3 times, keep the median, and run
+   with the device plugged in with a stable battery / thermal state.
+3. For a realistic session, open **Market** (mock feed). Pan, pinch and
+   use the crosshair for 30 s with EMA + volume enabled. The
+   `onPerformanceSample` line on that screen reports fps and layer-build
+   time every 5 s. Production apps can collect the same numbers through
+   the prop.
+4. Check memory:
+   - load 100k bars (Playground → 100k);
+   - pan for 60 s;
+   - switch symbols 10 times on Market.
+     The native and JS heap must return to a plateau. After a symbol switch,
+     the old dataset must be freed (P9 memory-release tests cover the JS
+     side).
+
+### iOS (Instruments)
+
+- Use Xcode → Open Developer Tool → Instruments:
+  - **Animation Hitches** for hitch ratio and frame lifetimes;
+  - **Time Profiler** for the UI thread (Skia / worklets);
+  - the `com.facebook.react.JavaScript` thread (Hermes);
+  - **Allocations** for memory growth.
+- Target: hitch ratio < 5 ms/s during pan / pinch.
+
+### Android
+
+- **Profile HWUI rendering** (Developer options → _Profile HWUI
+  rendering_ → _On screen as bars_) gives a quick visual. Skia's surface
+  draws on the UI thread, so bars above the green line are over budget.
+- For precise frame timing and thread activity (`mqt_js`, the UI thread,
+  `RenderThread`), use Android Studio → **Profiler → CPU → System Trace**,
+  or `adb shell perfetto` with the `gfx`, `view` and `sched` categories.
+- `adb shell dumpsys gfxinfo <package> framestats` gives janky-frame
+  percentiles for a scripted run.
+- Test on a mid-range device (for example, a Snapdragon 6-series phone),
+  not only on flagships.
+
+### 120 Hz (ProMotion and high-refresh Android)
+
+- **iOS.** ProMotion needs
+  `CADisableMinimumFrameDurationOnPhone = true` in `Info.plist` (the
+  example sets it through `app.json`). Without it, iOS caps third-party
+  apps at 60 Hz. Check the effective rate on the Benchmark screen: UI
+  avg ≈ 8.3 ms at 120 Hz. `FrameStats` uses the measured interval, so
+  dropped frames are counted against the real budget.
+- **Android.** Pick the high refresh rate in display settings. Some
+  devices lower the rate for apps that don't request it, so confirm the
+  UI avg interval rather than trusting the setting.
+- ProMotion lowers the refresh rate when content is idle. Measure only
+  during interaction (the scripted timelines keep the display busy).
+  Idle frames are expected to be skipped.
+- Budget at 120 Hz: layer build (`build.avgMs` in the performance sample)
+  should stay under about 3 ms, leaving headroom for Skia raster and
+  compositing within 8.3 ms.
+
+### Recording results
+
+Add a row per device to §2 with the device, OS, refresh rate, build
+(commit) and the Benchmark numbers. Record regressions above 10 % p95 in
+the PR description.

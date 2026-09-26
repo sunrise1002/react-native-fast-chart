@@ -17,6 +17,11 @@
  * | PT12 | capacity 2 (more ticks available)                      | Boundary (max)     | capped at 2                                 |
  * | PT13 | createPriceTicks capacity 0 / -1 / NaN / 2.2 / default | Boundary           | 0 / 0 / 0 / 3 / 64                           |
  * | PT14 | negative range [-105, -95]                             | Equivalence        | values within range, exact multiples        |
+ * | PT15 | tickSize 0.25 on [100, 101.2] (raw step 0.2)           | Equivalence        | step 0.25, every tick a tick multiple       |
+ * | PT16 | tickSize 5 on a tiny span [100, 100.5]                 | Boundary (min)     | step floored at one tick (5)                |
+ * | PT17 | tickSize 0.3 (non-nice) on [0, 10]                     | Equivalence        | step a multiple of 0.3                      |
+ * | PT18 | tickSize 0 / NaN / -1 / ∞                              | Invalid            | same step as without a tick size            |
+ * | PT19 | tickSize 0.001 below precision unit 0.01               | Boundary           | precision unit wins                         |
  */
 import { describe, expect, it } from '@jest/globals';
 import {
@@ -219,5 +224,53 @@ describe('createPriceTicks', () => {
     expect(ticks.values.length).toBe(PRICE_TICK_CAPACITY);
     expect(ticks.count).toBe(0);
     expect(ticks.step).toBeNaN();
+  });
+});
+
+describe('tick size', () => {
+  const isMultiple = (value: number, tick: number) =>
+    Math.abs(value / tick - Math.round(value / tick)) < 1e-9;
+
+  it('PT15: snaps the step to a tick multiple', () => {
+    // Given
+    const out = createPriceTicks();
+    // When
+    const count = generatePriceTicks(100, 101.2, 300, 12, out, NaN, 0.25);
+    // Then
+    expect(count).toBeGreaterThan(0);
+    expect(out.step).toBe(0.25);
+    for (let i = 0; i < count; i++) {
+      expect(isMultiple(out.values[i] as number, 0.25)).toBe(true);
+    }
+  });
+
+  it('PT16: floors the step at one tick', () => {
+    // Given / When / Then
+    expect(priceTickStep(100, 100.5, 300, 12, NaN, 5)).toBe(5);
+  });
+
+  it('PT17: non-nice tick sizes', () => {
+    // Given / When
+    const step = priceTickStep(0, 10, 300, 12, NaN, 0.3);
+    // Then
+    expect(isMultiple(step, 0.3)).toBe(true);
+    expect(step).toBeGreaterThanOrEqual(priceTickStep(0, 10, 300, 12));
+  });
+
+  it.each([[0], [NaN], [-1], [Infinity]])(
+    'PT18: invalid tick size %p is ignored',
+    (tick) => {
+      // Given / When / Then
+      expect(priceTickStep(100, 101.2, 300, 12, NaN, tick)).toBe(
+        priceTickStep(100, 101.2, 300, 12)
+      );
+    }
+  );
+
+  it('PT19: the precision unit wins over a smaller tick', () => {
+    // Given / When
+    const step = priceTickStep(100, 100.001, 300, 12, 2, 0.001);
+    // Then
+    expect(step).toBeCloseTo(0.01, 12);
   });
 });

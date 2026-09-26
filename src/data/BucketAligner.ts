@@ -26,7 +26,8 @@ export interface BucketAligner {
  * (DST-aware for `'local'` and IANA names); sub-day timeframes and UTC use
  * the plain epoch / UTC alignment of `getBucketStart`.
  *
- * Across a DST change a day is 23 or 25 h long: the next bucket is found
+ * A bucket is aligned with the offset in force at its own midnight (not
+ * at the trade time). Across a DST change a day is 23 or 25 h long: the next bucket is found
  * by stepping one nominal interval, moving to noon and re-aligning, which
  * is exact for any shift below 12 h.
  */
@@ -44,8 +45,13 @@ export function createBucketAligner(
       nextBucket: (start) => getNextBucketStart(start, spec),
     };
   }
-  const bucketOf = (time: number) =>
-    getBucketStart(time, spec, offsetAt(zone, time));
+  const bucketOf = (time: number) => {
+    const offset = offsetAt(zone, time);
+    const start = getBucketStart(time, spec, offset);
+    // On a DST day the offset at midnight differs from the one at `time`.
+    const atStart = offsetAt(zone, start);
+    return atStart === offset ? start : getBucketStart(time, spec, atStart);
+  };
   return {
     bucketOf,
     nextBucket: (start) =>

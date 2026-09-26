@@ -20,6 +20,9 @@
  * | PF15 | formatVolume 950 / 1234 / 12_345_678 / 999.999 / 1e15| Equivalence/Boundary| "950" / "1.23K" / "12.35M" / "1.00K" / T  |
  * | PF16 | formatVolume 0 / 0.5 / 0.00123 / 12.5               | Boundary             | "0" / "0.5000" / "0.001230" / "12.50"      |
  * | PF17 | formatVolume -1 / NaN / ∞                           | Invalid              | ''                                         |
+ * | PF18 | formatVolume precision 3 on 12.3456 / 0.5 / 0       | Equivalence/Boundary | "12.346" / "0.500" / "0.000"               |
+ * | PF19 | formatVolume precision 0 / 20 / 4 (999.4, 1.5, 1234) | Boundary            | "999" / clamped 12 decimals / "1.23K"      |
+ * | PF20 | formatVolume precision -1 / NaN                     | Invalid              | automatic format                           |
  */
 import { describe, expect, it } from '@jest/globals';
 import {
@@ -213,5 +216,29 @@ describe('formatVolume', () => {
   it.each([[-1], [NaN], [Infinity]])('PF17: %p → empty', (value) => {
     // Given / When / Then
     expect(formatVolume(value)).toBe('');
+  });
+});
+
+describe('formatVolume precision', () => {
+  it.each([
+    [12.3456, '12.346'],
+    [0.5, '0.500'],
+    [0, '0.000'],
+  ])('PF18: %p with 3 decimals → %p', (value, expected) => {
+    // Given / When / Then
+    expect(formatVolume(value, 3)).toBe(expected);
+  });
+
+  it('PF19: 0 / over-max decimals, scaled units keep 2', () => {
+    // Given / When / Then
+    expect(formatVolume(999.4, 0)).toBe('999');
+    expect(formatVolume(1.5, 20)).toBe('1.' + '5'.padEnd(12, '0'));
+    expect(formatVolume(1234, 4)).toBe('1.23K');
+  });
+
+  it.each([[-1], [NaN]])('PF20: precision %p → automatic', (precision) => {
+    // Given / When / Then
+    expect(formatVolume(0.5, precision)).toBe('0.5000');
+    expect(formatVolume(950, precision)).toBe('950');
   });
 });

@@ -14,6 +14,10 @@
  * | TZ9  | probe returns NaN                                     | Invalid (dep.)     | offset 0                                  |
  * | TZ10 | lookup before the cached window                       | Boundary           | re-probes                                 |
  * | TZ11 | deviceOffsetMs                                        | Equivalence        | -getTimezoneOffset in ms                  |
+ * | TZ12 | IANA resolver New York winter / summer / transition   | Equivalence / ±1   | -5 h / -4 h, exact at 07:00Z, no probes   |
+ * | TZ13 | IANA lookups inside a cached window                   | Equivalence        | window = next transition, reused          |
+ * | TZ14 | unknown IANA name                                     | Invalid            | behaves as UTC (fixed, table null)        |
+ * | TZ15 | isIanaTimeZone local / utc / UTC / number / name      | Equivalence        | false ×4 / true                           |
  */
 import { describe, expect, it, jest } from '@jest/globals';
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE } from '../CivilTime';
@@ -21,6 +25,7 @@ import {
   createOffsetResolver,
   deviceOffsetMs,
   fixedOffsetMs,
+  isIanaTimeZone,
   MAX_UTC_OFFSET_MINUTES,
   offsetAt,
   OFFSET_PROBE_WINDOW_MS,
@@ -156,5 +161,58 @@ describe('offsetAt', () => {
       -new Date(t).getTimezoneOffset() * MS_PER_MINUTE
     );
     expect(offsetAt(createOffsetResolver('local'), t)).toBe(deviceOffsetMs(t));
+  });
+});
+
+describe('IANA zones', () => {
+  const NY_DST = Date.UTC(2024, 2, 10, 7);
+
+  it('TZ12: New York standard / daylight time, exact transition', () => {
+    // Given
+    const resolver = createOffsetResolver('America/New_York');
+    const probe = jest.fn((_t: number) => 0);
+    // When / Then
+    expect(resolver.table).not.toBeNull();
+    expect(offsetAt(resolver, Date.UTC(2024, 0, 15), probe)).toBe(
+      -5 * MS_PER_HOUR
+    );
+    expect(offsetAt(resolver, Date.UTC(2024, 6, 15), probe)).toBe(
+      -4 * MS_PER_HOUR
+    );
+    expect(offsetAt(resolver, NY_DST - 1, probe)).toBe(-5 * MS_PER_HOUR);
+    expect(offsetAt(resolver, NY_DST, probe)).toBe(-4 * MS_PER_HOUR);
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('TZ13: caches the window up to the next transition', () => {
+    // Given
+    const resolver = createOffsetResolver('America/New_York');
+    // When
+    offsetAt(resolver, Date.UTC(2024, 0, 15));
+    // Then
+    expect(resolver.validTo).toBe(NY_DST);
+    expect(resolver.validFrom).toBe(Date.UTC(2024, 0, 15));
+    expect(offsetAt(resolver, NY_DST - MS_PER_DAY)).toBe(-5 * MS_PER_HOUR);
+    expect(resolver.validFrom).toBe(Date.UTC(2024, 0, 15));
+  });
+
+  it('TZ14: an unknown IANA name behaves as UTC', () => {
+    // Given / When
+    const resolver = createOffsetResolver('Atlantis/Capital');
+    // Then
+    expect(resolver.table).toBeNull();
+    expect(resolver.local).toBe(false);
+    expect(offsetAt(resolver, Date.UTC(2024, 6, 1))).toBe(0);
+  });
+
+  it.each<[ChartTimeZone, boolean]>([
+    ['local', false],
+    ['utc', false],
+    ['UTC', false],
+    [540, false],
+    ['Asia/Seoul', true],
+  ])('TZ15: isIanaTimeZone(%p) → %p', (zone, expected) => {
+    // Given / When / Then
+    expect(isIanaTimeZone(zone)).toBe(expected);
   });
 });

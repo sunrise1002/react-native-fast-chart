@@ -22,6 +22,7 @@ import type { TradingChartProps } from './TradingChartProps';
 import { ChartErrorBoundary } from './ChartErrorBoundary';
 import { useChartTelemetry } from './useChartTelemetry';
 import { useHistoryPagination } from './useHistoryPagination';
+import { useTradingOverlays } from './useTradingOverlays';
 import { toViewportOptions } from '../engine/ChartSharedState';
 import { connectIndicatorsToUi } from '../engine/IndicatorSync';
 import { connectPanesToUi } from '../engine/PaneSync';
@@ -69,6 +70,7 @@ function TradingChartContent({
   timeFormatter,
   onError,
   onPerformanceSample,
+  onOverlayDrag,
   style,
   testID,
 }: TradingChartProps) {
@@ -178,11 +180,13 @@ function TradingChartContent({
     resolved.crosshair,
     resolved.interaction.crosshairEnabled
   );
+  const trading = useTradingOverlays(handle, resolved, onOverlayDrag);
   const gestures = useChartGestures(
     handle.state,
     options,
     resolved.interaction,
-    crosshairGesture ?? builtInCrosshair
+    crosshairGesture ?? builtInCrosshair,
+    trading.overlayTap
   );
   const commitPaneRatios = useCallback(
     (ratios: number[]) => {
@@ -197,9 +201,12 @@ function TradingChartContent({
     resolved.layout.paneSeparatorHitSlop,
     commitPaneRatios
   );
+  // Overlay drags and pane separators win at touch-down (manual
+  // activation); a miss fails them and leaves the touch to the viewport.
+  const overlayDrag = trading.gestures.drag;
   const composed = useMemo(
-    () => Gesture.Race(paneResize, gestures.composed),
-    [paneResize, gestures.composed]
+    () => Gesture.Race(overlayDrag, paneResize, gestures.composed),
+    [overlayDrag, paneResize, gestures.composed]
   );
   useCrosshairCallback(handle.state, onCrosshairChange);
 

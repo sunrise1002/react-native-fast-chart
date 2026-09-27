@@ -12,6 +12,7 @@ import type { IndicatorEngine } from '../indicators/IndicatorEngine';
 import type { PaneManager } from '../panes/PaneManager';
 import type { ChartMetrics } from '../performance/ChartMetrics';
 import type { RealtimeStatusStore } from '../realtime/RealtimeStatus';
+import type { TradingOverlayStore } from '../trading/TradingOverlayStore';
 import type { ChartErrorChannel } from './ChartErrorChannel';
 import type { ChartSharedState, ViewportOptions } from './ChartSharedState';
 
@@ -40,6 +41,8 @@ export interface TradingChartHandle extends TradingChartController {
   readonly history: HistoryLoader;
   /** Host-reported realtime feed status. */
   readonly realtimeStatus: RealtimeStatusStore;
+  /** Trading overlays and drawings (scene source of truth). */
+  readonly trading: TradingOverlayStore;
 }
 
 /** Internal: the component feeds the resolved config and props in. */

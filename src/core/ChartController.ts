@@ -10,6 +10,7 @@ import type { PaneDefinition, PaneInput } from '../panes/Pane';
 import type { RealtimeStatus } from '../realtime/RealtimeStatus';
 import type { ChartSettings } from '../settings/ChartSettings';
 import type { LogicalRange } from './ChartTypes';
+import type { TradingOverlayController } from './TradingController';
 
 /**
  * Viewport after `setData` (symbol / timeframe switch, spec §32):
@@ -38,7 +39,7 @@ export interface ChartSettingsExtras {
  * history pages) flows through this controller instead of React props:
  * none of these calls re-render React.
  */
-export interface TradingChartController {
+export interface TradingChartController extends TradingOverlayController {
   /* ---------------------------------- Data ---------------------------------- */
 
   /**

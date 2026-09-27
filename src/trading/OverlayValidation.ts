@@ -5,7 +5,7 @@ import type {
   OrderInput,
   PositionInput,
   PriceLine,
-  PriceLineInput,
+  PriceLinePatch,
 } from './TradingTypes';
 
 /*
@@ -34,7 +34,7 @@ function optionalString(value: unknown): value is string | undefined {
 /** Resolves a price line input; `null` when the price is not finite. */
 export function resolvePriceLine(
   id: string,
-  input: Omit<PriceLineInput, 'id'>,
+  input: PriceLinePatch,
   base?: PriceLine
 ): PriceLine | null {
   const price = input.price ?? base?.price;

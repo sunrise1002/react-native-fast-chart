@@ -26,7 +26,7 @@ import {
 /**
  * Gesture layer (spec §18, Phase 4). Structure:
  *
- *   Race(crosshair?, Simultaneous(pan, pinch, doubleTap))
+ *   Race(crosshair?, Simultaneous(pan, pinch, Exclusive(doubleTap, tap?)))
  *
  * - pan: horizontal-only activation (`activeOffsetX` / `failOffsetY`) so a
  *   vertical parent ScrollView keeps scrolling; 1:1 drag, fling with
@@ -35,6 +35,9 @@ import {
  * - doubleTap: animated reset to the default zoom at realtime.
  * - crosshair: the long-press gesture from `useCrosshairGesture` (or a
  *   custom one); `Race` hands the touch to whichever activates first.
+ * - tap: the overlay tap (selection / drawing anchors). It waits for the
+ *   double tap to fail; in drawing mode the double tap is left out so
+ *   quick tap-tap placement is not taken as a zoom reset.
  */
 
 /** Horizontal travel (dp) before a pan activates / vertical before it fails. */
@@ -54,14 +57,27 @@ export interface ChartGestures {
   composed: ComposedGesture;
 }
 
-/** Composes the viewport gestures with an optional crosshair gesture. */
+/** Overlay tap and whether a drawing tool is active. */
+export interface OverlayTapOptions {
+  tap: GestureType;
+  drawingMode: boolean;
+}
+
+/** Composes the viewport gestures with optional crosshair / overlay tap. */
 export function composeChartGestures(
   pan: GestureType,
   pinch: GestureType,
   doubleTap: GestureType,
-  crosshair?: GestureType | ComposedGesture
+  crosshair?: GestureType | ComposedGesture,
+  overlayTap?: OverlayTapOptions
 ): ComposedGesture {
-  const viewport = Gesture.Simultaneous(pan, pinch, doubleTap);
+  let taps: GestureType | ComposedGesture = doubleTap;
+  if (overlayTap !== undefined) {
+    taps = overlayTap.drawingMode
+      ? overlayTap.tap
+      : Gesture.Exclusive(doubleTap, overlayTap.tap);
+  }
+  const viewport = Gesture.Simultaneous(pan, pinch, taps);
   return crosshair ? Gesture.Race(crosshair, viewport) : viewport;
 }
 
@@ -69,7 +85,8 @@ export function useChartGestures(
   state: ChartSharedState,
   options: ViewportOptions,
   interaction: ChartInteractionConfig,
-  crosshair?: GestureType | ComposedGesture
+  crosshair?: GestureType | ComposedGesture,
+  overlayTap?: OverlayTapOptions
 ): ChartGestures {
   return useMemo(() => {
     const panActive = makeMutable(false);
@@ -142,7 +159,13 @@ export function useChartGestures(
       pan,
       pinch,
       doubleTap,
-      composed: composeChartGestures(pan, pinch, doubleTap, crosshair),
+      composed: composeChartGestures(
+        pan,
+        pinch,
+        doubleTap,
+        crosshair,
+        overlayTap
+      ),
     };
-  }, [state, options, interaction, crosshair]);
+  }, [state, options, interaction, crosshair, overlayTap]);
 }

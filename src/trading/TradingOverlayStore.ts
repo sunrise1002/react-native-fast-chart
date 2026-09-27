@@ -20,6 +20,7 @@ import type {
   PositionInput,
   PriceLine,
   PriceLineInput,
+  PriceLinePatch,
 } from './TradingTypes';
 
 /**
@@ -128,7 +129,7 @@ export class TradingOverlayStore {
   }
 
   /** `false` for an unknown id or a non-finite price. */
-  updatePriceLine(id: string, patch: Omit<PriceLineInput, 'id'>): boolean {
+  updatePriceLine(id: string, patch: PriceLinePatch): boolean {
     const i = this.priceLines.findIndex((p) => p.id === id);
     if (i < 0) {
       return false;

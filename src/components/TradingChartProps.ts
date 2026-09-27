@@ -10,6 +10,7 @@ import type { ChartErrorHandler } from '../core/ChartErrors';
 import type { Candle } from '../data/Candle';
 import type { TradingChartHandle } from '../engine/ChartHandle';
 import type { LoadMoreHandler } from '../history/HistoryLoader';
+import type { OverlayDragHandler } from '../trading/TradingTypes';
 import type { IndicatorInput } from '../indicators/Indicator';
 import type { CrosshairChangeHandler } from '../interaction/useCrosshairCallback';
 import type { ChartPerformanceSampleHandler } from '../performance/PerformanceSampler';
@@ -106,6 +107,13 @@ export interface TradingChartProps {
    * prop is set. Keep the reference stable.
    */
   onPerformanceSample?: ChartPerformanceSampleHandler;
+  /**
+   * Level drags on the JS thread (TP / SL, draggable orders and price
+   * lines): `'change'` whenever the tick-snapped price changes, one
+   * `'commit'` on release (the chart already shows the new price). Same
+   * events as `controller.subscribeOverlayDrag`. Keep the reference stable.
+   */
+  onOverlayDrag?: OverlayDragHandler;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }

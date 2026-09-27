@@ -37,6 +37,9 @@ export interface PriceLineInput {
   visible?: boolean;
 }
 
+/** Patch of `updatePriceLine` (omitted fields are kept). */
+export type PriceLinePatch = Partial<Omit<PriceLineInput, 'id'>>;
+
 /** A price line as stored (every field resolved). */
 export interface PriceLine {
   id: string;

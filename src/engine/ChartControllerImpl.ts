@@ -1,5 +1,6 @@
 import type { SharedValue } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
+import { resolveSymbolPrecision } from '../axes/SymbolPrecision';
 import type { ChartConfig } from '../core/ChartConfig';
 import { chartIssue, type ChartErrorHandler } from '../core/ChartErrors';
 import type {
@@ -51,6 +52,7 @@ import {
 } from './ChartSharedState';
 import { ChartErrorChannel, reportHistoryErrors } from './ChartErrorChannel';
 import { ChartDataFeed } from './ChartDataFeed';
+import { ChartTradingMethods } from './ChartTradingMethods';
 import {
   resetViewport,
   scrollToRealtime,
@@ -58,7 +60,10 @@ import {
 } from './ViewportActions';
 
 /** Default `TradingChartHandle` implementation (see the factories). */
-export class ChartController implements ChartControllerInternals {
+export class ChartController
+  extends ChartTradingMethods
+  implements ChartControllerInternals
+{
   readonly store = new CandleStore();
   readonly state: ChartSharedState;
   options: ViewportOptions;
@@ -73,6 +78,7 @@ export class ChartController implements ChartControllerInternals {
   private readonly unsubscribeHistory: () => void;
 
   constructor(config: ChartConfig) {
+    super();
     this.state = createChartSharedState(config);
     this.feed = new ChartDataFeed(this.store, this.errors);
     this.options = toViewportOptions(config);
@@ -99,6 +105,11 @@ export class ChartController implements ChartControllerInternals {
     this.options = toViewportOptions(config);
     this.history.setRetryDelay(config.history.retryDelayMs);
     this.indicators.setContext({ timeZone: config.axes.timeZone });
+    this.trading.configure(
+      resolveSymbolPrecision(config.symbol, config.axes.pricePrecision)
+        .volumeDecimals,
+      config.trading.keepDrawingTool
+    );
     if (this.metrics.enabled !== config.debug.profiling) {
       this.metrics = createChartMetrics({ enabled: config.debug.profiling });
     }
@@ -234,12 +245,16 @@ export class ChartController implements ChartControllerInternals {
       indicators: this.indicators.getEntries(),
       panes: this.panes.getPanes(),
       isExplicitPane: (id) => this.panes.isExplicit(id),
+      drawings: this.trading.drawings.items,
       ...extras,
     });
   }
 
   applySettings(settings: ChartSettings): void {
     applyChartSettings(this.indicators, this.panes, settings);
+    if (settings.drawings !== undefined) {
+      this.setDrawings(settings.drawings);
+    }
   }
 
   setRealtimeStatus(status: RealtimeStatus): void {
@@ -280,6 +295,7 @@ export class ChartController implements ChartControllerInternals {
     this.indicators.dispose();
     this.panes.dispose();
     this.realtimeStatus.dispose();
+    this.trading.dispose();
     this.feed.release();
   }
 }

@@ -6,6 +6,8 @@ import type {
 } from '../indicators/Indicator';
 import type { PaneDefinition } from '../panes/Pane';
 import { PRICE_PANE_ID } from '../panes/Pane';
+import { cloneDrawing, type Drawing } from '../trading/DrawingModel';
+import { readDrawingSettings } from './DrawingSettings';
 
 /*
  * Serializable user chart settings (spec §25, Phase 14.1): indicator list
@@ -51,6 +53,8 @@ export interface ChartSettings {
   theme?: string;
   /** Last selected timeframe (e.g. `'1m'`). */
   timeframe?: string;
+  /** User drawings in z-order (absent = leave the chart's drawings). */
+  drawings?: Drawing[];
 }
 
 /** A setting dropped or repaired by `deserializeChartSettings`. */
@@ -79,6 +83,7 @@ export interface ChartSettingsSource {
   isExplicitPane?: (id: string) => boolean;
   theme?: string;
   timeframe?: string;
+  drawings?: readonly Drawing[];
 }
 
 /** Snapshot of the current chart configuration as plain data. */
@@ -108,6 +113,9 @@ export function createChartSettings(
   }
   if (source.timeframe !== undefined) {
     settings.timeframe = source.timeframe;
+  }
+  if (source.drawings !== undefined) {
+    settings.drawings = source.drawings.map(cloneDrawing);
   }
   return settings;
 }
@@ -170,6 +178,10 @@ export function deserializeChartSettings(
   settings.panes = readPanes(raw.panes, issues);
   readName(raw, 'theme', settings, issues);
   readName(raw, 'timeframe', settings, issues);
+  const drawings = readDrawingSettings(raw.drawings, issues);
+  if (drawings !== undefined) {
+    settings.drawings = drawings;
+  }
   return { settings, issues };
 }
 

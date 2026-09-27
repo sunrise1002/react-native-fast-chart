@@ -157,6 +157,16 @@ export interface ChartHistoryConfig {
   retryDelayMs: number;
 }
 
+/** Trading overlays and drawing tools (spec Phase 22). */
+export interface ChartTradingConfig {
+  /** Drag TP / SL, draggable orders / price lines and selected drawings. */
+  dragEnabled: boolean;
+  /** Touch tolerance around handles, lines and drawings, dp. */
+  hitSlop: number;
+  /** Keep the drawing tool active after a drawing is created. */
+  keepDrawingTool: boolean;
+}
+
 /** Static chart options. Changing them is not a per-frame operation. */
 export interface ChartConfig {
   /** Symbol metadata: precision and tick size (spec Phase 19.1–19.2). */
@@ -169,6 +179,7 @@ export interface ChartConfig {
   overlays: ChartOverlaysConfig;
   realtime: ChartRealtimeConfig;
   history: ChartHistoryConfig;
+  trading: ChartTradingConfig;
   telemetry: ChartTelemetryConfig;
   debug: ChartDebugConfig;
 }
@@ -229,6 +240,11 @@ export const DEFAULT_CHART_CONFIG: Readonly<ChartConfig> = Object.freeze({
   history: Object.freeze({
     loadMoreThresholdBars: 50,
     retryDelayMs: 2000,
+  }),
+  trading: Object.freeze({
+    dragEnabled: true,
+    hitSlop: 12,
+    keepDrawingTool: false,
   }),
   telemetry: Object.freeze({
     performanceSampleMs: 5000,

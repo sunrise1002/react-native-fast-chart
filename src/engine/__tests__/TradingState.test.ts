@@ -14,9 +14,9 @@
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act } from '@testing-library/react-native';
+import type { DrawingType } from '../../trading/DrawingModel';
 import {
   activeTool,
-  applyTradingScene,
   connectTradingToUi,
   createTradingHitMap,
   createTradingUiState,
@@ -79,12 +79,12 @@ describe('applyTradingScene', () => {
     });
   });
 
-  it.each([
+  it.each<[DrawingType | null, boolean, number[], number[]]>([
     ['trendLine', false, [1, 2], [1, 2]],
     ['trendLine', true, [1, 2], []],
     [null, false, [1, 2], []],
     ['trendLine', false, [], []],
-  ] as const)(
+  ])(
     'AS3: tool %p pending %p draft %p → %p',
     (tool, pending, draft, expected) => {
       // Given

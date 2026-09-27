@@ -18,6 +18,7 @@
  * | CS13 | minBarSpacing > maxBarSpacing                            | Invalid (order)    | both defaults                              |
  * | CS14 | initialBarSpacing below min / above max / equal to max   | Boundary           | clamped to min / max / kept                |
  * | CS15 | defaults are not mutated                                 | Safety             | DEFAULT_CHART_CONFIG unchanged             |
+ * | CS16 | trading: hitSlop 0 / -1 / NaN, dragEnabled non-boolean   | Boundary / invalid | 0 kept; others → defaults                  |
  */
 import { describe, expect, it } from '@jest/globals';
 import type { DeepPartial } from '../../utils/deepMerge';
@@ -206,5 +207,21 @@ describe('sanitizeChartConfig', () => {
     // Then
     expect(JSON.stringify(D)).toBe(before);
     expect(Object.isFrozen(D.viewport)).toBe(true);
+  });
+
+  it.each([
+    [0, 0],
+    [-1, 12],
+    [NaN, 12],
+    [Infinity, 12],
+  ])('CS16: trading.hitSlop %p → %p', (hitSlop, expected) => {
+    // Given / When
+    const out = resolve({
+      trading: { hitSlop, dragEnabled: 'yes' as unknown as boolean },
+    });
+    // Then
+    expect(out.trading.hitSlop).toBe(expected);
+    expect(out.trading.dragEnabled).toBe(true);
+    expect(out.trading.keepDrawingTool).toBe(false);
   });
 });

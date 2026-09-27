@@ -28,9 +28,9 @@ import {
   beginOverlayDrag,
   endOverlayDrag,
   noDragStart,
-  tapOverlays,
   updateOverlayDrag,
 } from '../TradingActions';
+import { tapOverlays } from '../TradingTapActions';
 import { DRAG_DRAWING, DRAG_LINE, DRAG_NONE } from '../TradingState';
 import { makeTradingEngine, setHits } from './tradingTestUtils';
 

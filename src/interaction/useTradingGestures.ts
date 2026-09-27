@@ -7,10 +7,10 @@ import {
   beginOverlayDrag,
   endOverlayDrag,
   noDragStart,
-  tapOverlays,
   updateOverlayDrag,
   type OverlayDragStart,
 } from '../engine/TradingActions';
+import { tapOverlays } from '../engine/TradingTapActions';
 import { DRAG_LINE, DRAG_NONE } from '../engine/TradingState';
 import type { DrawingType } from '../trading/DrawingModel';
 

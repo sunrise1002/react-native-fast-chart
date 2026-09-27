@@ -20,6 +20,7 @@
  * | TS15 | moveDrawing valid / unknown id                              | Equiv. / Invalid   | true / false + recompile                        |
  * | TS16 | subscribeDrawings on drawing changes; unsubscribe           | Equivalence        | notified; silent after unsubscribe              |
  * | TS17 | clearOverlays keeps drawings; dispose drops listeners       | Equivalence        | overlays empty; no more notifications           |
+ * | TS18 | update 1 of 2 lines / orders; TP commit without a position  | Boundary (NULL)    | others kept; event only, no position            |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { OverlayScene } from '../OverlayScene';
@@ -231,6 +232,25 @@ describe('line drags', () => {
       'host'
     );
     expect(store.getOrders()[0]?.price).toBe(7);
+  });
+
+  it('TS18: update among several lines, TP commit without a position', () => {
+    // Given
+    const a = store.addPriceLine({ price: 1 });
+    store.addPriceLine({ id: 'b', price: 3 });
+    store.setOrders([
+      { id: 'o1', side: 'buy', price: 5, quantity: 1 },
+      { id: 'o2', side: 'sell', price: 9, quantity: 1 },
+    ]);
+    // When
+    store.updatePriceLine(a, { price: 2 });
+    store.handleLineDrag('order', 'o2', 8, 'commit');
+    store.handleLineDrag('takeProfit', 'position', 130, 'commit');
+    // Then
+    expect(store.getPriceLines().map((p) => p.price)).toEqual([2, 3]);
+    expect(store.getOrders().map((o) => o.price)).toEqual([5, 8]);
+    expect(store.getPosition()).toBeNull();
+    expect(events).toHaveLength(2);
   });
 });
 

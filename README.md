@@ -24,8 +24,9 @@ It aims for TradingView / Binance-app UX at 60–120 fps with 100k+ candles.
   batches. Pixel-bucket conflation keeps a fully zoomed-out view of 100k bars
   within the frame budget (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 - **Indicators**
-  - Overlays: SMA, EMA, WMA, Bollinger Bands.
-  - Panes: Volume, RSI, MACD, ATR.
+  - 20 built-ins with TradingView defaults: moving averages, Bollinger,
+    VWAP, Keltner, Donchian, Supertrend, Ichimoku, Parabolic SAR, Volume,
+    RSI, MACD, ATR, Stochastic, Stochastic RSI, OBV, MFI, CCI, ADX / DMI.
   - Incremental O(1) updates per tick.
   - Custom indicators through a registry.
 - **Realtime**
@@ -232,9 +233,36 @@ const indicators = [
 ];
 ```
 
-- Overlays (`sma`, `ema`, `wma`, `bollinger`) draw on the price pane.
-- Pane indicators (`volume`, `rsi`, `macd`, `atr`) get their own pane.
-  Indicators that share a `paneId` share a pane.
+Built-in indicators (defaults and formulas follow TradingView):
+
+| Type           | Name                    | Placement | Config (defaults)                                                                     |
+| -------------- | ----------------------- | --------- | ------------------------------------------------------------------------------------- |
+| `sma`          | Simple moving average   | overlay   | `period` 9, `source` close                                                            |
+| `ema`          | Exponential MA          | overlay   | `period` 9, `source` close                                                            |
+| `wma`          | Weighted MA             | overlay   | `period` 9, `source` close                                                            |
+| `bollinger`    | Bollinger Bands         | overlay   | `period` 20, `stdDev` 2, `source` close                                               |
+| `vwap`         | Anchored VWAP           | overlay   | `anchor` session (`week`, `month`), `source` hlc3, `band1` 1, `band2`/`band3` 0 (off) |
+| `keltner`      | Keltner Channels        | overlay   | `period` 20, `multiplier` 2, `atrPeriod` 10, `source` close                           |
+| `donchian`     | Donchian Channels       | overlay   | `period` 20                                                                           |
+| `supertrend`   | Supertrend              | overlay   | `atrPeriod` 10, `factor` 3                                                            |
+| `ichimoku`     | Ichimoku Cloud          | overlay   | `conversionPeriod` 9, `basePeriod` 26, `spanBPeriod` 52, `displacement` 26            |
+| `parabolicSar` | Parabolic SAR (dots)    | overlay   | `start` 0.02, `increment` 0.02, `maximum` 0.2                                         |
+| `volume`       | Volume                  | pane      | `maPeriod` 0 (off)                                                                    |
+| `rsi`          | Relative Strength Index | pane      | `period` 14, `source` close, `overbought` 70, `oversold` 30                           |
+| `macd`         | MACD                    | pane      | `fastPeriod` 12, `slowPeriod` 26, `signalPeriod` 9, `source` close                    |
+| `atr`          | Average True Range      | pane      | `period` 14                                                                           |
+| `stochastic`   | Stochastic              | pane      | `kPeriod` 14, `kSmoothing` 1, `dSmoothing` 3                                          |
+| `stochRsi`     | Stochastic RSI          | pane      | `kSmoothing` 3, `dSmoothing` 3, `rsiPeriod` 14, `stochPeriod` 14, `source` close      |
+| `obv`          | On-Balance Volume       | pane      | —                                                                                     |
+| `mfi`          | Money Flow Index        | pane      | `period` 14                                                                           |
+| `cci`          | Commodity Channel Index | pane      | `period` 20, `source` hlc3                                                            |
+| `adx`          | ADX / DMI               | pane      | `diPeriod` 14, `adxPeriod` 14                                                         |
+
+- Overlays draw on the price pane. VWAP resets in the chart time zone
+  (`axes.timeZone`). Ichimoku's leading spans and cloud extend into the
+  empty area right of the last bar.
+- Pane indicators get their own pane. Indicators that share a `paneId`
+  share a pane.
 - Users can drag the pane separators.
 - For custom indicators, register an `IndicatorModule` with
   `chart.indicators.registry.register(module)` (see

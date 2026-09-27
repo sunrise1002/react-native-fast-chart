@@ -19,6 +19,7 @@
  * | X1   | extendRangeWithOutputs widens with finite values      | Normal            | min/max widened                                 |
  * | X2   | NaN values, unknown id, unknown output, unaligned     | Abnormal          | ignored                                         |
  * | X3   | fractional / out-of-range start / end                 | Boundary          | clamped to [ceil(start), floor(end)] ∩ series   |
+ * | X4   | shifted refs (offset ±2) with view edges past the data | Boundary          | values [left − offset, right − offset] used     |
  */
 import { describe, expect, it } from '@jest/globals';
 import { createUiCandleSeries } from '../../data/UiCandleSeries';
@@ -314,5 +315,48 @@ describe('alignment and autoscale extension', () => {
     // Then
     expect(inner).toEqual({ min: 0, max: 10 });
     expect(outer).toEqual({ min: -100, max: 100 });
+  });
+
+  it('X4: shifted refs cover the view edges minus the offset', () => {
+    // Given: values 100, 1, 2, -100; view shows bars 2 … 5 (past the data)
+    const set = { series: { a: series([100, 1, 2, -100]) }, revision: 0 };
+    const lead = { min: 0, max: 10 };
+    const lag = { min: 0, max: 10 };
+    const plain = { min: 0, max: 10 };
+    // When
+    extendRangeWithOutputs(
+      set,
+      candles(4),
+      [{ id: 'a', output: 0, offset: 2 }],
+      2,
+      3,
+      lead,
+      2,
+      5
+    );
+    extendRangeWithOutputs(
+      set,
+      candles(4),
+      [{ id: 'a', output: 0, offset: -2 }],
+      0,
+      1,
+      lag,
+      0,
+      1
+    );
+    extendRangeWithOutputs(
+      set,
+      candles(4),
+      [{ id: 'a', output: 0, offset: 0 }],
+      1,
+      2,
+      plain,
+      -9,
+      9
+    );
+    // Then: lead covers values 0 … 3, lag values 2 … 3, plain [1, 2]
+    expect(lead).toEqual({ min: -100, max: 100 });
+    expect(lag).toEqual({ min: -100, max: 10 });
+    expect(plain).toEqual({ min: 0, max: 10 });
   });
 });

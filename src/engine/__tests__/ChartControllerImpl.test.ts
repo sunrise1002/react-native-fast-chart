@@ -19,6 +19,7 @@
  * | CC13 | add / update / remove / set / get indicators       | Equivalence        | delegated to the indicator engine          |
  * | CC14 | addIndicator unknown type                          | Invalid            | throws, nothing added                      |
  * | CC15 | indicator flush with profiling on                  | Equivalence        | `indicator` metrics channel records        |
+ * | CC16 | axes.timeZone at creation / on configure           | Equivalence        | indicator context follows the chart zone   |
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { renderHook } from '@testing-library/react-native';
@@ -207,6 +208,21 @@ describe('configure', () => {
     expect(kept).toBe(metrics);
     expect(handle.metrics).not.toBe(metrics);
     expect(handle.metrics.enabled).toBe(true);
+  });
+});
+
+describe('indicator context', () => {
+  it('CC16: the chart time zone reaches the indicator engine', () => {
+    // Given
+    const handle = asInternals(
+      createTradingChartController({ axes: { timeZone: 'Asia/Tokyo' } })
+    );
+    const initial = handle.indicators.getContext();
+    // When
+    handle.configure(resolveChartConfig({ axes: { timeZone: 'utc' } }));
+    // Then
+    expect(initial).toEqual({ timeZone: 'Asia/Tokyo' });
+    expect(handle.indicators.getContext()).toEqual({ timeZone: 'utc' });
   });
 });
 

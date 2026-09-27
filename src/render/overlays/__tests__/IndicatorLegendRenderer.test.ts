@@ -13,6 +13,7 @@
  * | I6   | narrow maxWidth                                 | Boundary          | values wrap to next line, row count grows    |
  * | I7   | no items                                        | Boundary (empty)  | 0 lines, nothing emitted                     |
  * | I8   | item decimals 0 / compact                       | Equivalence       | per-item format overrides layout decimals    |
+ * | I9   | value offset +1 / −1 / out of range             | Boundary          | value of bar index − offset; omitted outside |
  * | V1   | formatIndicatorValue compact ±, fixed, fallback | Normal / Boundary | "1.50K" / "-1.50K" / "3.1" / layout decimals |
  * | V2   | formatIndicatorValue NaN / ∞ (both modes)       | Invalid           | ''                                           |
  */
@@ -107,6 +108,28 @@ function run(
 }
 
 describe('layoutIndicatorLegend', () => {
+  it('I9: shifted values read bar index − offset', () => {
+    // Given
+    const items: IndicatorLegendItem[] = [
+      {
+        id: 'bb',
+        label: 'S',
+        values: [
+          { output: 0, style: 1, offset: 1 },
+          { output: 0, style: 2, offset: -1 },
+          { output: 0, style: 3, offset: 0 },
+        ],
+      },
+    ];
+    const s = set([[0], [5, 7]]);
+    // When
+    const at1 = run(s, 1, items).texts.map((t) => t.text);
+    const at0 = run(s, 0, items).texts.map((t) => t.text);
+    // Then: at bar 1: [0] = 5, [2] missing, [1] = 7; at bar 0: missing, 7, 5
+    expect(at1).toEqual(['S', '5.00', '7.00']);
+    expect(at0).toEqual(['S', '7.00', '5.00']);
+  });
+
   it('I1: rows with values', () => {
     // Given / When
     const { lines, texts } = run(

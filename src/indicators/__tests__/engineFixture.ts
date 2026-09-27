@@ -4,6 +4,7 @@ import type { RenderProfiler } from '../../performance/RenderProfiler';
 import { generateCandles } from '../../testing/fixtures/generateCandles';
 import { emaModule } from '../builtins/MovingAverages';
 import type { createIndicatorRegistry } from '../builtins';
+import type { IndicatorContext } from '../Indicator';
 import type { IndicatorUpdate } from '../IndicatorCompute';
 import { IndicatorEngine } from '../IndicatorEngine';
 
@@ -15,6 +16,7 @@ export function setup(
     bars?: typeof BARS;
     registry?: ReturnType<typeof createIndicatorRegistry>;
     onError?: (error: unknown) => void;
+    context?: IndicatorContext;
   } = {}
 ) {
   const store = new CandleStore(options.bars ?? BARS);
@@ -30,6 +32,7 @@ export function setup(
     registry: options.registry,
     getProfiler: () => profiler,
     onError: options.onError,
+    context: options.context,
   });
   const updates: IndicatorUpdate[][] = [];
   engine.subscribeResults((u) => updates.push([...u]));

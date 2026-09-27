@@ -12,6 +12,8 @@
  * | P7   | update from an empty result                            | Boundary (empty)  | identical to calculate                    |
  * | P8   | changedIndex NaN                                       | Invalid input     | full recalculation                        |
  * | P9   | growth past the result capacity                        | Boundary (max)    | reallocates, identical                    |
+ * | P10  | P1 / P2 / P6 / P7 for every P10 indicator (3h bars,    | Property          | identical, incl. VWAP session resets      |
+ * |      | New York zone)                                         |                   |                                           |
  */
 import { describe, expect, it } from '@jest/globals';
 import type { CandleColumns } from '../../data/CandleBuffer';
@@ -22,7 +24,8 @@ import { macdModule } from '../builtins/Macd';
 import { emaModule, smaModule, wmaModule } from '../builtins/MovingAverages';
 import { rsiModule } from '../builtins/Rsi';
 import { volumeModule } from '../builtins/Volume';
-import type { IndicatorResult } from '../Indicator';
+import { ADVANCED_CASES } from './advancedCases';
+import type { IndicatorContext, IndicatorResult } from '../Indicator';
 import type { IndicatorModule } from '../IndicatorRegistry';
 import { columnsOf, prefix } from './indicatorTestUtils';
 
@@ -49,7 +52,13 @@ const CASES: Case[] = [
   ],
   ['atr 14', atrModule as IndicatorModule, { period: 14 }],
   ['atr 1', atrModule as IndicatorModule, { period: 1 }],
+  ...ADVANCED_CASES,
 ];
+
+/** Session-anchored indicators (VWAP) see day changes in this zone. */
+const CONTEXT: IndicatorContext = { timeZone: 'America/New_York' };
+/** 3h bars: a new session every 8 bars. */
+const BAR_MS = 3 * 3_600_000;
 
 /** Mutable columns that simulate a realtime feed. */
 function feed(capacity: number, seed: number) {
@@ -59,9 +68,10 @@ function feed(capacity: number, seed: number) {
   const setBar = (i: number, special = false) => {
     price += (random() - 0.5) * 2;
     const v = special ? ([NaN, Infinity, -Infinity][i % 3] as number) : price;
-    c.open[i] = v;
-    c.high[i] = v + 1;
-    c.low[i] = v - 1;
+    c.time[i] = Date.UTC(2024, 0, 1) + i * BAR_MS;
+    c.open[i] = v + random() - 0.5;
+    c.high[i] = v + 0.5 + random();
+    c.low[i] = v - 0.5 - random();
     c.close[i] = v;
     c.volume[i] = special ? v : random() * 1000;
   };
@@ -103,7 +113,7 @@ function run(
   for (let i = 0; i < n; i++) {
     setBar(i);
   }
-  let result = ind.calculate(prefix(c, n), config);
+  let result = ind.calculate(prefix(c, n), config, CONTEXT);
   for (let s = 0; s < opts.steps; s++) {
     const append = n === 0 || random() < 0.3;
     if (append) {
@@ -111,8 +121,8 @@ function run(
     }
     setBar(n - 1, opts.specials === true && random() < 0.05);
     const update = ind.update as NonNullable<typeof ind.update>;
-    result = update(result, prefix(c, n), n - 1, config);
-    expectIdentical(result, ind.calculate(prefix(c, n), config));
+    result = update(result, prefix(c, n), n - 1, config, CONTEXT);
+    expectIdentical(result, ind.calculate(prefix(c, n), config, CONTEXT));
   }
   return { result, c, n, config };
 }

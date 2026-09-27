@@ -99,7 +99,9 @@ export const ichimokuKernel: StepKernel<IchimokuConfig, IchimokuState> = {
     const base = stepMid(state.base, i, high, low, commit);
     (outputs[ICHIMOKU_CONVERSION] as Float64Array)[i] = conversion;
     (outputs[ICHIMOKU_BASE] as Float64Array)[i] = base;
-    (outputs[ICHIMOKU_LAGGING] as Float64Array)[i] = input.close[p] as number;
+    const close = input.close[p] as number;
+    (outputs[ICHIMOKU_LAGGING] as Float64Array)[i] =
+      close - close === 0 ? close : NaN;
     (outputs[ICHIMOKU_SPAN_A] as Float64Array)[i] = (conversion + base) / 2;
     (outputs[ICHIMOKU_SPAN_B] as Float64Array)[i] = stepMid(
       state.spanB,

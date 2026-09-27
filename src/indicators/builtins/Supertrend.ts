@@ -134,7 +134,7 @@ export const supertrendKernel: StepKernel<SupertrendConfig, SupertrendState> = {
       }
       upOut[i] = direction < 0 ? lower : NaN;
       downOut[i] = direction > 0 ? upper : NaN;
-      midOut[i] = middle;
+      midOut[i] = middle - middle === 0 ? middle : NaN;
     } else {
       upOut[i] = NaN;
       downOut[i] = NaN;

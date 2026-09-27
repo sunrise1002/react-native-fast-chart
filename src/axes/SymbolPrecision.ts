@@ -77,6 +77,19 @@ export function resolveSymbolPrecision(
 }
 
 /**
+ * Snap step of dragged / drawn prices: the tick size, else one unit of
+ * the fixed price decimals (`2` → `0.01`), else `NaN` (no snapping).
+ */
+export function interactionTickSize(precision: ResolvedPrecision): number {
+  if (isPositiveFinite(precision.tickSize)) {
+    return precision.tickSize;
+  }
+  return isDecimals(precision.priceDecimals)
+    ? Math.pow(10, -precision.priceDecimals)
+    : NaN;
+}
+
+/**
  * Nearest multiple of `tickSize` (`101.13`, tick `0.25` → `101.25`).
  * Returns `price` unchanged when the tick size is invalid; `NaN` for a
  * non-finite price.

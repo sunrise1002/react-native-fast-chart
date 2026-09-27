@@ -1,4 +1,4 @@
-import type { ChartTheme } from './ChartTheme';
+import { defaultTradingTheme, type ChartTheme } from './ChartTheme';
 
 /** Binance-like dark theme. */
 export const defaultDarkTheme: ChartTheme = {
@@ -52,4 +52,5 @@ export const defaultDarkTheme: ChartTheme = {
     '#1ABC9C',
     '#FF8C42',
   ],
+  trading: { ...defaultTradingTheme },
 };

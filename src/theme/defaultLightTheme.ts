@@ -1,4 +1,4 @@
-import type { ChartTheme } from './ChartTheme';
+import { defaultTradingTheme, type ChartTheme } from './ChartTheme';
 
 /** Binance-like light theme. */
 export const defaultLightTheme: ChartTheme = {
@@ -52,4 +52,12 @@ export const defaultLightTheme: ChartTheme = {
     '#16A085',
     '#E67E22',
   ],
+  trading: {
+    ...defaultTradingTheme,
+    entry: '#C99400',
+    annotation: '#707A8A',
+    drawing: '#1E53E5',
+    selection: '#C99400',
+    fillOpacity: 0.1,
+  },
 };

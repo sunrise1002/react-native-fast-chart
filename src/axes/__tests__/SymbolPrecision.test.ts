@@ -21,9 +21,12 @@
  * | SS2  | snapStepToTickSize invalid tick                        | Invalid            | step unchanged                             |
  * | SS3  | snapStepToTickSize step 0 / -1 / NaN / ∞               | Invalid / Boundary | NaN                                        |
  * | SS4  | snapStepToTickSize overflowing multiple (1e308 @ 0.3)  | Boundary (max)     | NaN                                        |
+ * | IT1  | interactionTickSize tick 0.25 / decimals 2 / 0         | Equivalence/Bound. | 0.25 / 0.01 / 1                            |
+ * | IT2  | interactionTickSize no tick, no decimals (NaN)         | Invalid / empty    | NaN (no snapping)                          |
  */
 import { describe, expect, it } from '@jest/globals';
 import {
+  interactionTickSize,
   resolveSymbolPrecision,
   snapStepToTickSize,
   snapToTickSize,
@@ -195,5 +198,25 @@ describe('snapStepToTickSize', () => {
   it('SS4: an overflowing multiple → NaN', () => {
     // Given / When / Then
     expect(snapStepToTickSize(1.7e308, 0.3)).toBeNaN();
+  });
+});
+
+describe('interactionTickSize', () => {
+  it.each([
+    [{ tickSize: 0.25, priceDecimals: 4, volumeDecimals: NaN }, 0.25],
+    [{ tickSize: NaN, priceDecimals: 2, volumeDecimals: NaN }, 0.01],
+    [{ tickSize: NaN, priceDecimals: 0, volumeDecimals: NaN }, 1],
+  ])('IT1: %p → %p', (precision, expected) => {
+    // Given: a resolved precision
+    // When: the snap step is derived
+    // Then: the tick wins, else one unit of the decimals
+    expect(interactionTickSize(precision)).toBeCloseTo(expected, 12);
+  });
+
+  it('IT2: automatic precision → NaN', () => {
+    // Given: neither a tick size nor fixed decimals
+    const precision = { tickSize: NaN, priceDecimals: NaN, volumeDecimals: 3 };
+    // When / Then: no snapping
+    expect(interactionTickSize(precision)).toBeNaN();
   });
 });

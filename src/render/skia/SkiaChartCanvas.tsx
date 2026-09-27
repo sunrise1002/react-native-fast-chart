@@ -30,7 +30,7 @@ import {
   createPerformanceSampler,
   type ChartPerformanceSampleHandler,
 } from '../../performance/PerformanceSampler';
-import type { ChartTheme } from '../../theme/ChartTheme';
+import { resolveTradingTheme, type ChartTheme } from '../../theme/ChartTheme';
 import type { OverlayRenderSpec } from '../indicators/OverlayRenderSpec';
 import type { PaneRenderSpec } from '../panes/PaneRenderSpec';
 import { useIndicatorDrawList } from './IndicatorPaints';
@@ -45,6 +45,7 @@ import { usePaneDrawList } from './PanePaints';
 import { usePaneLayer } from './usePaneLayer';
 import { usePaneScales } from './usePaneScales';
 import { usePriceAxisWidth } from './usePriceAxisWidth';
+import { useTradingLayer } from './useTradingLayer';
 
 const NO_PANE_SPECS: readonly PaneRenderSpec[] = [];
 
@@ -186,6 +187,15 @@ export function SkiaChartCanvas({
     panes: paneItems,
     paneScales,
   });
+  const trading = useMemo(() => resolveTradingTheme(theme), [theme]);
+  const tradingLayer = useTradingLayer(state, barMs, {
+    font,
+    trading,
+    pixelRatio,
+    pricePrecision,
+    thousandsSeparator: axes.thousandsSeparator,
+    priceFormatter,
+  });
   const requiredWidth = useDerivedValue(
     () => axesLayer.frame.value.requiredAxisWidth
   );
@@ -282,6 +292,7 @@ export function SkiaChartCanvas({
         color={theme.axis.lineColor}
       />
       <Picture picture={axesLayer.picture} />
+      <Picture picture={tradingLayer} />
       <Picture picture={overlayLayer.legend} />
       <Group opacity={crosshairOpacity}>
         <Picture picture={overlayLayer.crosshair} />

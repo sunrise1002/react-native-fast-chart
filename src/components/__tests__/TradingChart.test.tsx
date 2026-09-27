@@ -129,9 +129,10 @@ describe('TradingChart', () => {
         0
       );
     expect(wickRects).toBeGreaterThan(40);
-    // Underlay, indicators, panes, axes, legend, crosshair.
+    // Underlay, indicators, panes, axes, trading overlays, legend,
+    // crosshair.
     expect(view.UNSAFE_root.findAllByType('SkiaPicture' as never)).toHaveLength(
-      6
+      7
     );
   });
 
@@ -287,8 +288,8 @@ describe('TradingChart', () => {
         ).length
     );
     // Tree order: underlay + indicators (inside the plot clip), panes,
-    // axes, legend, crosshair.
-    expect(ops).toEqual([0, 5, 0, 0, 0, 0]);
+    // axes, trading overlays (empty), legend, crosshair.
+    expect(ops).toEqual([0, 5, 0, 0, 0, 0, 0]);
   });
 
   it('TC15 / TC16: compares the prop by value', async () => {
@@ -371,7 +372,7 @@ describe('TradingChart', () => {
     expect(ops[2]?.filter((o) => o.op === 'path').length).toBeGreaterThan(4);
     // Pane legends: RSI and MACD captions.
     const legend = (
-      pictures[4]?.props.picture.value as {
+      pictures[5]?.props.picture.value as {
         texts(): string[];
       }
     ).texts();

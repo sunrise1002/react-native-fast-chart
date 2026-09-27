@@ -18,7 +18,14 @@ import {
   createRenderCache,
   type RenderCache,
 } from '../render/conflation/RenderCache';
+import { emptyOverlayScene, type OverlayScene } from '../trading/OverlayScene';
 import type { TimeScaleOptions, TimeScaleState } from '../viewport/TimeScale';
+import {
+  createTradingHitMap,
+  createTradingUiState,
+  type TradingHitMap,
+  type TradingUiState,
+} from './TradingState';
 
 /**
  * Per-chart engine state living in Reanimated shared values (spec §22:
@@ -81,6 +88,12 @@ export interface ChartSharedState {
    * reading it does not re-run them (see `RenderCache`).
    */
   renderCache: SharedValue<RenderCache>;
+  /** Trading overlays / drawings snapshot (see `OverlayScene`). */
+  tradingScene: SharedValue<OverlayScene>;
+  /** Overlay drag, drawing draft and selection (UI thread). */
+  tradingUi: SharedValue<TradingUiState>;
+  /** Line handle boxes of the last frame (mutated in place). */
+  tradingHits: SharedValue<TradingHitMap>;
 }
 
 /** Layout spec with only the price pane. */
@@ -142,6 +155,9 @@ export function createChartSharedState(config: ChartConfig): ChartSharedState {
     }),
     lastPricePulse: makeMutable(1),
     renderCache: makeMutable(createRenderCache()),
+    tradingScene: makeMutable(emptyOverlayScene()),
+    tradingUi: makeMutable(createTradingUiState()),
+    tradingHits: makeMutable(createTradingHitMap()),
   };
 }
 

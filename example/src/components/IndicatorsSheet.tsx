@@ -19,6 +19,15 @@ import {
 import { IndicatorParamsEditor } from './IndicatorParamsEditor';
 import { Toggle } from './Toggle';
 
+/** "Add" list grouped by each type's default placement. */
+const ADD_SECTIONS: readonly {
+  title: string;
+  placement: IndicatorPlacement;
+}[] = [
+  { title: 'Add overlay', placement: 'overlay' },
+  { title: 'Add pane', placement: 'pane' },
+];
+
 interface IndicatorsSheetProps {
   controller: TradingChartHandle;
   theme: ChartTheme;
@@ -91,14 +100,21 @@ export function IndicatorsSheet({
               ) : null}
             </View>
           ))}
-          <Text style={[styles.section, { color }]}>Add</Text>
-          {engine.registry.list().map((meta) => (
-            <AddRow
-              key={meta.type}
-              meta={meta}
-              theme={theme}
-              controller={controller}
-            />
+          {ADD_SECTIONS.map(({ title, placement }) => (
+            <View key={placement}>
+              <Text style={[styles.section, { color }]}>{title}</Text>
+              {engine.registry
+                .list()
+                .filter((meta) => meta.placement === placement)
+                .map((meta) => (
+                  <AddRow
+                    key={meta.type}
+                    meta={meta}
+                    theme={theme}
+                    controller={controller}
+                  />
+                ))}
+            </View>
           ))}
         </ScrollView>
       </View>

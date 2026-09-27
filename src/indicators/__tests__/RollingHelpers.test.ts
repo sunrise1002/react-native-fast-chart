@@ -15,6 +15,7 @@
  * | R4   | windowValue ages 0 … period − 1                        | Normal               | candidate, then newest → oldest committed    |
  * | R5   | 1000 commits across the 256 resync                     | Boundary             | sum equals the exact window sum              |
  * | R6   | period 1                                               | Boundary (min)       | the candidate itself                         |
+ * | R7   | period 300 > resync interval, NaN in the partial ring   | Boundary / Abnormal  | resync sums only finite filled slots         |
  */
 import { describe, expect, it } from '@jest/globals';
 import { createSeededRandom } from '../../testing/fixtures/random';
@@ -190,6 +191,19 @@ describe('RollingWindow', () => {
     const exact = values.slice(-7).reduce((a, b) => a + b, 0);
     expect(w.sum).toBeCloseTo(exact, 6);
     expect(w.count).toBe(1000);
+  });
+
+  it('R7: resync while filling skips non-finite slots', () => {
+    // Given: 256 commits (the resync point) into a 300-bar window
+    const w = createRollingWindow(300);
+    // When
+    for (let i = 0; i < 256; i++) {
+      commitWindow(w, i === 10 ? NaN : 1);
+    }
+    // Then
+    expect(w.sum).toBe(255);
+    expect(w.invalid).toBe(1);
+    expect(peekWindowSum(w, 1)).toBeNaN();
   });
 
   it('R6: period 1 returns the candidate', () => {

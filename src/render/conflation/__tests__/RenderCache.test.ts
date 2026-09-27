@@ -15,6 +15,7 @@
  * | RC10  | cachedCandleRange: long all-NaN range                       | Invalid            | false, NaN out                             |
  * | RC11  | cachedExtendRange short / long range                        | Boundary           | equals the linear extension                |
  * | RC12  | cachedExtendRange: unknown id / output / unaligned series   | Invalid            | ignored                                    |
+ * | RC13  | cachedExtendRange: ref offset ±26, short / long, view edges | Equivalence        | equals the linear shifted extension        |
  */
 import { describe, expect, it } from '@jest/globals';
 import { bucketMax, pyramidRangeMinMax } from '../../../data/MinMaxPyramid';
@@ -297,5 +298,33 @@ describe('cachedExtendRange', () => {
     cachedExtendRange(createRenderCache(), set, data, refs, 0, 2999, out);
     // Then
     expect(out).toEqual({ min: 1, max: 2 });
+  });
+
+  it('RC13: shifted refs read [left − offset, right − offset]', () => {
+    // Given: a forward (+26) and a backward (−26) shifted output
+    const data = series(5000);
+    const values = Float64Array.from(
+      { length: 5000 },
+      (_, i) => Math.sin(i / 40) * 300
+    );
+    const set = indicatorSet(data, values);
+    const refs = [
+      { id: 'ma', output: 0, offset: 26 },
+      { id: 'ma', output: 0, offset: -26 },
+    ];
+    const cache = createRenderCache();
+    for (const [start, end, left, right] of [
+      [4800, 4999, 4800, 5030],
+      [0, 4999, -10, 5030],
+    ] as const) {
+      const got = { min: 90, max: 110 };
+      const want = { min: 90, max: 110 };
+      // When
+      cachedExtendRange(cache, set, data, refs, start, end, got, left, right);
+      extendRangeWithOutputs(set, data, refs, start, end, want, left, right);
+      // Then
+      expect(got).toEqual(want);
+      expect(got.max).toBeGreaterThan(110);
+    }
   });
 });

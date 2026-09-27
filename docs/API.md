@@ -320,8 +320,16 @@ Also exported:
 
 **Built-in types**
 
-- Overlays: `sma`, `ema`, `wma`, `bollinger`.
-- Panes: `volume`, `rsi`, `macd`, `atr`.
+- Overlays: `sma`, `ema`, `wma`, `bollinger`, `vwap`, `donchian`,
+  `keltner`, `supertrend`, `ichimoku`, `parabolicSar`.
+- Panes: `volume`, `rsi`, `macd`, `atr`, `stochastic`, `stochRsi`, `obv`,
+  `mfi`, `cci`, `adx`.
+
+Defaults and formulas follow TradingView; each module documents its formula
+in TSDoc. `vwap` resets at the start of each session, week or month
+(`config.anchor`) in the chart time zone (`axes.timeZone`). Ichimoku draws the
+lagging span shifted back and the leading spans (and their cloud) shifted
+forward into the empty area right of the last bar.
 
 ```ts
 interface IndicatorInput {
@@ -347,8 +355,22 @@ interface IndicatorInput {
   then add it like a built-in. Useful building blocks:
   `createIndicatorResult`, `ensureResultCapacity`, `readSource`,
   `isFiniteValue`, `periodParam`, `sourceParam`, `resolveNumberParam`,
-  `resolveSourceParam`. Use `NaN` for warm-up values; non-finite points are
-  never drawn.
+  `resolveSourceParam`, `resolveChoiceParam`. Use `NaN` for warm-up values;
+  non-finite points are never drawn.
+- **Choice params.** A `ChoiceParam` (`kind: 'choice'`) is a string param
+  with a fixed list of `options`; resolve it with `resolveChoiceParam`.
+- **Indicator context.** `calculate` and `update` receive an optional
+  `IndicatorContext` (`{ timeZone }`, default `DEFAULT_INDICATOR_CONTEXT`,
+  i.e. UTC). The chart passes its `axes.timeZone`. A module that reads the
+  context sets `meta.usesContext: true` and is recomputed when the zone
+  changes.
+- **Series kinds and offsets.** Besides `line`, `band` and `histogram`, a
+  series descriptor can be `points` (one dot per bar, one batched path).
+  A `band` with `downColor` is a two-color cloud: where `lower` is above
+  `upper` it uses `downColor`, and `edges: false` fills it without
+  stroking. `IndicatorModule.outputOffsets(config)` shifts each output by N
+  bars when drawn (positive = into the future); auto-scale and the legend
+  value follow the shift.
 
 - **Adapters:** `toLinePoints`, `toBandPoints`, `toHistogramPoints`,
   `toMultiLine`, `histogramPolarity`. They turn results into plain point

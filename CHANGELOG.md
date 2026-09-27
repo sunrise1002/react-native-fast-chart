@@ -40,6 +40,13 @@ breaking change.
 
 ### Added
 
+- **Advanced indicators** — overlays `vwap` (session / week / month anchor
+  in the chart zone, std-dev bands), `donchian`, `keltner`, `supertrend`,
+  `ichimoku` (shifted spans, future cloud) and `parabolicSar` (dots); panes
+  `stochastic`, `stochRsi`, `obv`, `mfi`, `cci` and `adx` (DMI). New
+  exports: `DEFAULT_INDICATOR_CONTEXT`, `resolveChoiceParam` and the types
+  `IndicatorContext` and `ChoiceParam`.
+
 - **Symbol precision** — `config.symbol`:
   - `pricePrecision`, `tickSize`, `quantityStep`, `volumePrecision`;
   - price-axis steps snap to `tickSize`;

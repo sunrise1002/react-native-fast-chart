@@ -189,12 +189,14 @@ export {
 
 // ─── Indicators: inputs, catalog, custom indicators ──────────────────────
 export {
+  DEFAULT_INDICATOR_CONTEXT,
   PRICE_SOURCES,
   type BandPoint,
   type HistogramColorMode,
   type HistogramPoint,
   type HistogramPolarity,
   type Indicator,
+  type IndicatorContext,
   type IndicatorDefinition,
   type IndicatorInput,
   type IndicatorResult,
@@ -222,9 +224,11 @@ export {
   MAX_INDICATOR_PERIOD,
   paramDefaults,
   periodParam,
+  resolveChoiceParam,
   resolveNumberParam,
   resolveSourceParam,
   sourceParam,
+  type ChoiceParam,
   type IndicatorConfigValue,
   type IndicatorParam,
   type NumberParam,

@@ -27,6 +27,10 @@ describe('public API', () => {
         'CHART_SETTINGS_VERSION',
         'ChartErrorBoundary',
         'DEFAULT_CHART_CONFIG',
+        'DRAWING_ANCHOR_COUNT',
+        'DRAWING_TYPES',
+        'FIB_LEVELS',
+        'defaultTradingTheme',
         'DEFAULT_FRAME_TARGET_MS',
         'DEFAULT_INDICATOR_CONTEXT',
         'IndicatorRegistry',
@@ -120,6 +124,7 @@ describe('public API', () => {
         'GESTURE_TEST_IDS',
         'MAX_GENERATED_CANDLES',
         'PANE_RESIZE_TEST_ID',
+        'TRADING_GESTURE_TEST_IDS',
         'createSeededRandom',
         'generateCandles',
       ].sort()
@@ -142,6 +147,10 @@ describe('public API', () => {
       'pulseOpacity',
       'snapToPixel',
       'createRectList',
+      'compileOverlayScene',
+      'TradingOverlayStore',
+      'hitTestOverlays',
+      'drawLevels',
     ];
     // When
     const leaked = internals.filter(exported);

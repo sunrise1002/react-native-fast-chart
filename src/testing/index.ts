@@ -19,3 +19,4 @@ export { GESTURE_TEST_IDS } from '../interaction/useChartGestures';
 export { CROSSHAIR_TEST_IDS } from '../interaction/useCrosshairGesture';
 export { PANE_RESIZE_TEST_ID } from '../interaction/usePaneResizeGesture';
 export { CHART_ERROR_FALLBACK_TEST_ID } from '../components/ChartErrorBoundary';
+export { TRADING_GESTURE_TEST_IDS } from '../interaction/useTradingGestures';

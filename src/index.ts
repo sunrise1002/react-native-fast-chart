@@ -301,6 +301,9 @@ export {
   type ParsedParamValue,
 } from './settings/IndicatorCatalog';
 
+// ─── Trading overlays + drawings ─────────────────────────────────────────
+export * from './trading';
+
 // ─── Theme ───────────────────────────────────────────────────────────────
 export type { ChartTheme, ColorValue } from './theme/ChartTheme';
 export { defaultDarkTheme } from './theme/defaultDarkTheme';

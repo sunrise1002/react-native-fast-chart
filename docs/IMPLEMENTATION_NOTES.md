@@ -1866,3 +1866,137 @@ and migration notes are in [`CHANGELOG.md`](../CHANGELOG.md).
 - **README GIFs are placeholders** (`docs/media/*.gif`). Record them from
   the example app.
 - `src/index.ts` is 304 lines, which is the curated export list.
+
+## P10 — Advanced indicators
+
+### What was built
+
+- **Ten new built-ins** (`indicators/builtins/`). Each is a
+  `createStepIndicator` kernel with TradingView defaults and the formula
+  in TSDoc. Updates are incremental: O(1) per tick, except CCI.
+  - Overlays:
+    - `vwap`: session / week / month anchor in the chart zone, with up to
+      three std-dev band pairs;
+    - `donchian` and `keltner`: bands;
+    - `supertrend`: up / down lines plus fills to the candle body middle;
+    - `ichimoku`: five lines plus a bull / bear cloud;
+    - `parabolicSar`: dots.
+  - Panes:
+    - `stochastic` and `stochRsi` (80 / 50 / 20 guides, 20–80 zone);
+    - `obv`;
+    - `mfi` (80 / 20);
+    - `cci` (±100);
+    - `adx` (+DI, −DI, ADX).
+- **Rolling helpers**:
+  - `RollingExtremes`: monotonic-deque highest / lowest with a
+    peek / commit split;
+  - `RollingWindow`: ring sum, resynced every 256 commits to bound float
+    drift.
+  - Both follow Pine `na`: a window that contains a non-finite value gives
+    NaN.
+- **Indicator context** (`IndicatorContext { timeZone }`)
+  - `calculate` and `update` take an optional context. The default is
+    `DEFAULT_INDICATOR_CONTEXT` (UTC).
+  - The controller passes `axes.timeZone` at creation and on `configure`.
+  - `IndicatorEngine.setContext` recomputes only modules with
+    `meta.usesContext` (VWAP).
+- **Choice params.** `ChoiceParam` (`kind: 'choice'`) with
+  `resolveChoiceParam`. `parseParamValue` and the example editor handle
+  choice params like `source`.
+- **Shifted outputs.** `IndicatorModule.outputOffsets(config)` becomes
+  `IndicatorEntry.offsets` and `UiOutputRef.offset`.
+  - Ichimoku's lagging span is drawn at −(displacement − 1) and its
+    leading spans at +(displacement − 1), as TradingView plots them.
+  - Drawing uses a shifted time scale (`rightOffset − offset`).
+  - Auto-scale reads the values under the unclamped view edges
+    (`getViewIndexRange`), so the future cloud counts.
+  - The legend reads `output[index − offset]`.
+- **New render primitives:**
+  - cloud (`CloudGeometry.buildCloudFill`): a band with `downColor` is
+    drawn in two passes, sign +1 with the up paint and −1 with the down
+    paint. Each pass fills only the segments where that side is on top,
+    with crossings split at the exact intersection;
+  - dots (`buildPointGeometry`): a series of kind `points` adds one
+    `addCircle` per finite value to a single path, filled with one paint.
+    The radius is `max(1.5, lineWidth)`;
+  - Supertrend fills are bands with `edges: false` between the body middle
+    and the active line, so the NaN side breaks the fill at trend flips.
+- **Conflated views.** Clouds use the per-bucket last value of each edge.
+  Dots use the bucket's last value.
+- **Example app.** The indicator sheet lists every registry type, grouped
+  into "Add overlay" and "Add pane". Choice params render as toggles.
+- **Docs.** The README has a built-in indicator table. API.md §7 and the
+  CHANGELOG are updated.
+
+### Design decisions
+
+- **Time zone as context, not config.** VWAP needs the chart zone to find
+  session starts. Putting the zone in each indicator's config would leak
+  it into persisted settings, and a zone change would rewrite every
+  definition. The context is engine state instead. Only `usesContext`
+  modules recompute when it changes.
+- **VWAP shifted sums.** Σ(x − s)·v and Σ(x − s)²·v, with `s` set to the
+  first price of the period, avoid the cancellation of `Σx²v/Σv − vwap²`
+  at large prices (W8: 1e9 ± 1 stays exact).
+- **Offsets are a display concern.** The kernels write unshifted values,
+  so incremental updates and the property tests are unchanged. Only the
+  time scale, the auto-scale window and the legend index are shifted.
+- **Pine fidelity checked by reference ports.** `advancedRefs.ts` holds
+  naive O(n·p) references, written straight from the Pine definitions:
+  literal ports of `ta.sar` and `supertrend()`, and DMI with `fixnan`.
+  Golden tests compare the kernels against them on random data.
+
+### Public API added
+
+- `DEFAULT_INDICATOR_CONTEXT`, `resolveChoiceParam`; the types
+  `IndicatorContext` and `ChoiceParam`.
+- `IndicatorMeta.usesContext`; `IndicatorModule.outputOffsets`.
+- The series descriptor kind `points`, and `downColor` / `edges` on
+  `band`.
+- The built-in types `vwap`, `donchian`, `keltner`, `supertrend`,
+  `ichimoku`, `parabolicSar`, `stochastic`, `stochRsi`, `obv`, `mfi`,
+  `cci` and `adx`.
+
+### Tests
+
+- New suites:
+  - Oscillators, OverlayIndicators, Vwap, RollingHelpers,
+    IndicatorContext;
+  - CloudGeometry, OverlayRenderSpecP10, `indicatorLayerP10` (future
+    cloud, lagging span, PSAR dots, conflation).
+- Extended suites:
+  - IncrementalProperty: every P10 type, in the New York zone, on
+    3-hour bars with randomized OHLC. Incremental updates equal a full
+    recalculation;
+  - UiIndicatorSet, RenderCache (RC13, shifted refs),
+    IndicatorLegendRenderer, ChartControllerImpl (CC16, the zone reaches
+    the engine), IndicatorRegistry and index.
+- **Counts**: 2399 tests in 123 suites (P9: 2177 in 115).
+  - Coverage: 99.92 % statements, 99.62 % branches, 99.6 % functions,
+    99.92 % lines.
+  - Every new or changed P10 module is at 100 %.
+  - The remaining uncovered branches are in files P10 did not touch
+    (defensive fallbacks in the Skia layers, `paneAxes`, `AutoScaleTarget`,
+    `RenderProfiler`, `CandleGeometryBatch`).
+
+### Known limitations / follow-ups
+
+- **CCI is O(period) per tick.** The mean deviation needs the whole
+  window again after each mean change. With the default period of 20 this
+  is negligible.
+- **Stochastic RSI warm-up.** A window that contains a warm-up (NaN)
+  RSI has no value, so the first %K is at bar
+  `rsiPeriod + stochPeriod + kSmoothing − 2`. TradingView may show a few
+  earlier values if its highest / lowest skip `na`. Only the warm-up is
+  affected; steady-state values match.
+- **Supertrend.** The band ratchet is skipped while ATR warms up. This
+  matches Pine for positive prices, where Pine compares against a zero
+  previous band.
+- **MFI with zero money flow.** A window with no negative flow gives 100,
+  and one with no positive flow gives 0 (TradingView convention).
+- **Conflated clouds** use each bucket's last value, so a crossing inside
+  a bucket can be drawn at the bucket edge when fully zoomed out.
+- **File size.** `IndicatorEngine.ts` (372 lines, 341 before P10) and
+  `render/skia/indicatorDrawing.ts` (313) are above the 300-line
+  guideline. Splitting the engine's context and scheduling code out is a
+  candidate follow-up.

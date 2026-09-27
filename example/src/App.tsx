@@ -11,8 +11,9 @@ import { Toggle } from './components/Toggle';
 import { BenchmarkScreen } from './screens/BenchmarkScreen';
 import { MarketScreen } from './screens/MarketScreen';
 import { PlaygroundScreen, type ThemeMode } from './screens/PlaygroundScreen';
+import { TradingScreen } from './screens/TradingScreen';
 
-type Screen = 'playground' | 'market' | 'benchmark';
+type Screen = 'playground' | 'market' | 'trading' | 'benchmark';
 
 function ScreenSwitch({
   screen,
@@ -48,6 +49,12 @@ function ScreenSwitch({
         onPress={() => onChange('market')}
       />
       <Toggle
+        label="Trading"
+        active={screen === 'trading'}
+        theme={theme}
+        onPress={() => onChange('trading')}
+      />
+      <Toggle
         label="Benchmark"
         active={screen === 'benchmark'}
         theme={theme}
@@ -71,6 +78,10 @@ export default function App() {
             <PlaygroundScreen mode={mode} onModeChange={setMode} />
           ) : screen === 'market' ? (
             <MarketScreen
+              theme={mode === 'dark' ? defaultDarkTheme : defaultLightTheme}
+            />
+          ) : screen === 'trading' ? (
+            <TradingScreen
               theme={mode === 'dark' ? defaultDarkTheme : defaultLightTheme}
             />
           ) : (

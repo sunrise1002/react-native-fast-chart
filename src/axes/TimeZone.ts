@@ -112,7 +112,7 @@ export function createOffsetResolver(zone: ChartTimeZone): OffsetResolver {
 export function offsetAt(
   resolver: OffsetResolver,
   t: number,
-  probe: (t: number) => number = deviceOffsetMs
+  probe?: (t: number) => number
 ): number {
   'worklet';
   if (
@@ -129,9 +129,12 @@ export function offsetAt(
     resolver.validTo = zoneTableWindowEnd(table, t);
     return offset;
   }
-  const at = probe(t);
+  // Defaulted here, not in the signature: worklet closures are unpacked
+  // inside the body, after default parameters are evaluated.
+  const probeAt = probe ?? deviceOffsetMs;
+  const at = probeAt(t);
   const end = t + OFFSET_PROBE_WINDOW_MS;
-  const atEnd = probe(end);
+  const atEnd = probeAt(end);
   resolver.probes += 2;
   let validTo = end;
   if (atEnd !== at) {
@@ -141,7 +144,7 @@ export function offsetAt(
     while (hi - lo > 1) {
       const mid = lo + Math.floor((hi - lo) / 2);
       resolver.probes++;
-      if (probe(mid) === at) {
+      if (probeAt(mid) === at) {
         lo = mid;
       } else {
         hi = mid;

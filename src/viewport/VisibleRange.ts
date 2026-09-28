@@ -40,13 +40,14 @@ export function getVisibleLogicalRange(
  */
 export function getVisibleRange(
   state: TimeScaleState,
-  overscan: number = DEFAULT_OVERSCAN_BARS,
+  overscan?: number,
   out: VisibleRange = { startIndex: 0, endIndex: -1 }
 ): VisibleRange {
   'worklet';
   const right = rightEdgeIndex(state);
   const left = right - visibleBarCount(state);
-  const pad = overscan > 0 ? Math.floor(overscan) : 0;
+  const bars = overscan ?? DEFAULT_OVERSCAN_BARS;
+  const pad = bars > 0 ? Math.floor(bars) : 0;
   if (
     !Number.isFinite(left) ||
     !Number.isFinite(right) ||

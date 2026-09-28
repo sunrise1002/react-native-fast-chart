@@ -78,11 +78,12 @@ export const PRICE_TARGET_EPSILON = 1e-6;
 export function priceRangeChanged(
   a: PriceRange,
   b: PriceRange,
-  epsilon: number = PRICE_TARGET_EPSILON
+  epsilon?: number
 ): boolean {
   'worklet';
   const span = Math.abs(b.max - b.min);
-  const tolerance = span > 0 && span < Infinity ? span * epsilon : 0;
+  const tolerance =
+    span > 0 && span < Infinity ? span * (epsilon ?? PRICE_TARGET_EPSILON) : 0;
   return (
     !(Math.abs(a.min - b.min) <= tolerance) ||
     !(Math.abs(a.max - b.max) <= tolerance)

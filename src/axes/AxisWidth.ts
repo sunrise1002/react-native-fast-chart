@@ -13,13 +13,14 @@ export const AXIS_WIDTH_QUANTUM = 4;
 export function requiredAxisWidth(
   labelWidth: number,
   padding: number,
-  quantum = AXIS_WIDTH_QUANTUM
+  quantum?: number
 ): number {
   'worklet';
+  const step = quantum ?? AXIS_WIDTH_QUANTUM;
   const pad = padding > 0 && padding < Infinity ? padding : 0;
   const raw =
     (labelWidth > 0 && labelWidth < Infinity ? labelWidth : 0) + 2 * pad;
-  const q = quantum > 0 && quantum < Infinity ? quantum : 1;
+  const q = step > 0 && step < Infinity ? step : 1;
   return Math.ceil(raw / q - 1e-9) * q;
 }
 

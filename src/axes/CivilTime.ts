@@ -18,6 +18,7 @@ export interface CivilDate {
 }
 
 export function createCivilDate(): CivilDate {
+  'worklet';
   return { year: 1970, month: 1, day: 1 };
 }
 

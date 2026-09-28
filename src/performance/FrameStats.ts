@@ -36,13 +36,13 @@ export interface FrameStatsSummary {
 }
 
 /** Creates an empty accumulator for a frame budget (default 60 Hz). */
-export function createFrameStats(
-  targetMs = DEFAULT_FRAME_TARGET_MS
-): FrameStatsAccumulator {
+export function createFrameStats(targetMs?: number): FrameStatsAccumulator {
   'worklet';
   return {
     targetMs:
-      targetMs > 0 && targetMs < Infinity ? targetMs : DEFAULT_FRAME_TARGET_MS,
+      targetMs !== undefined && targetMs > 0 && targetMs < Infinity
+        ? targetMs
+        : DEFAULT_FRAME_TARGET_MS,
     count: 0,
     sum: 0,
     max: 0,

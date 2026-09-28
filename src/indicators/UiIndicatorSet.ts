@@ -47,6 +47,7 @@ export const MAX_INDICATOR_PATCH_BARS = 512;
 export const UI_INDICATOR_HEADROOM = 256;
 
 export function emptyUiIndicatorSet(): UiIndicatorSet {
+  'worklet';
   return { series: {}, revision: 0 };
 }
 

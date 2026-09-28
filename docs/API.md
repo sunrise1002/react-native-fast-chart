@@ -46,6 +46,7 @@ Conventions:
 | `onError`                 | `ChartErrorHandler`                         | Error telemetry (§5).                                                                                     |
 | `errorFallback`           | `ReactNode \| (error, retry) => ReactNode`  | Rendered after a render error. The default is an empty view. Changing `controller` also resets the error. |
 | `onPerformanceSample`     | `ChartPerformanceSampleHandler`             | Performance telemetry (§5). Frame timing is only collected while this prop is set.                        |
+| `onOverlayDrag`           | `OverlayDragHandler`                        | TP / SL / order / price-line drags (§9): `change` while the snapped price moves, one `commit` on release. |
 | `style`, `testID`         |                                             |                                                                                                           |
 
 `TradingChart` is always wrapped in a `ChartErrorBoundary`.
@@ -115,6 +116,11 @@ component stays authoritative.
   chart is mounted. It returns an unsubscribe function.
 - `dispose()`.
 
+### Trading overlays and drawings
+
+See §9 for `addPriceLine`, `setOrders`, `setPosition`, `setDrawingTool` and
+the rest of the trading API.
+
 ### Engine parts (advanced)
 
 - `store` — a `CandleStore`: JS-thread columns. It is the target of
@@ -156,6 +162,7 @@ Invalid values never reach the engine.
 | `history`     | `loadMoreThresholdBars` 50, `retryDelayMs` 2000                                                                                                                                        |
 | `telemetry`   | `performanceSampleMs` 5000 (minimum `MIN_PERFORMANCE_SAMPLE_MS` = 1000)                                                                                                                |
 | `debug`       | `overlay`, `profiling` (false)                                                                                                                                                         |
+| `trading`     | `dragEnabled` true, `hitSlop` 12, `keepDrawingTool` false — see §9                                                                                                                     |
 
 ---
 
@@ -357,6 +364,7 @@ interface IndicatorInput {
   `isFiniteValue`, `periodParam`, `sourceParam`, `resolveNumberParam`,
   `resolveSourceParam`, `resolveChoiceParam`. Use `NaN` for warm-up values;
   non-finite points are never drawn.
+
 - **Choice params.** A `ChoiceParam` (`kind: 'choice'`) is a string param
   with a fixed list of `options`; resolve it with `resolveChoiceParam`.
 - **Indicator context.** `calculate` and `update` receive an optional
@@ -395,4 +403,89 @@ interface IndicatorInput {
 - **Theme:**
   - `ChartTheme`;
   - `defaultDarkTheme`, `defaultLightTheme`;
-  - `mergeTheme(base, override)` with `ChartThemeOverride`.
+  - `mergeTheme(base, override)` with `ChartThemeOverride`;
+  - `theme.trading` (optional, `Partial<ChartTradingTheme>`) colors the
+    trading overlays; missing keys fall back to `defaultTradingTheme`.
+
+---
+
+## 9. Trading overlays and drawings
+
+All methods are on the controller (`TradingOverlayController`, part of
+`TradingChartController`). Inputs are validated: invalid list entries are
+dropped (the setters return the accepted count), and single-item methods
+throw for invalid input (`addPriceLine` with a non-finite price throws a
+`RangeError`; `addDrawing` with an unknown type or wrong anchors throws an
+`Error`). Every change recompiles one overlay scene on the JS thread; the
+UI thread draws it as a single Skia picture.
+
+### Price lines
+
+| Method                       | Returns       | Notes                                                                                                       |
+| ---------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `addPriceLine(input)`        | `string` (id) | `PriceLineInput`: `price`, `color`, `lineWidth`, `lineStyle`, `label`, `axisLabel`, `draggable`, `visible`. |
+| `updatePriceLine(id, patch)` | `boolean`     | `PriceLinePatch` — omitted fields are kept. `false` for an unknown id / bad price.                          |
+| `removePriceLine(id)`        | `boolean`     |                                                                                                             |
+| `getPriceLines()`            | `PriceLine[]` | Copies.                                                                                                     |
+
+### Orders, fills, position, annotations
+
+- `setOrders(OrderInput[])` / `getOrders()` — open orders as labelled lines
+  (`Limit Buy 0.250`; quantity decimals from `symbol.volumePrecision` /
+  `quantityStep`). `draggable: true` makes an order draggable.
+- `setFills(FillInput[])` / `getFills()` — filled orders as markers on the
+  bar containing `time` (arrows by side, or circles). Batched: one path per
+  color, only markers of visible bars are processed (binary search).
+- `setPosition(PositionInput | null)` / `getPosition()` — entry line with the
+  live unrealized PnL (`size × (last − entry) × multiplier`, sign by side,
+  plus %), PnL area shading, liquidation line and TP / SL lines whose labels
+  show the PnL at that level.
+- `setAnnotations(AnnotationInput[])` / `getAnnotations()` — `horizontalLine`,
+  `verticalLine`, `note` and `marker` (event marker with an icon and text).
+- `clearOverlays()` clears all of the above (drawings are kept).
+
+### Dragging (TP / SL, orders, price lines)
+
+Drags run on the UI thread: a touch on a draggable line's handle — its
+label box or its price-axis badge (the right edge of the plot for a line
+without a label), within `trading.hitSlop` — wins over pan / pinch /
+crosshair; any other touch falls through to them, so the rest of the line
+stays free for panning. The price snaps to the symbol tick
+size (`symbol.tickSize`, else `10^-decimals`).
+
+`OverlayDragEvent` is `{ phase: 'change' | 'commit', target: 'priceLine' |
+'order' | 'takeProfit' | 'stopLoss', id, price }`. `change` crosses to JS
+only when the snapped price changes; `commit` fires once on release and the
+store already holds the new price. Listen with the `onOverlayDrag` prop or
+`subscribeOverlayDrag(listener)` (returns an unsubscribe function). Set
+`trading.dragEnabled: false` to disable overlay gestures.
+
+### Drawings
+
+| Method                                  | Notes                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| `setDrawingTool(type \| null)`          | Tap-tap creation mode (`DRAWING_TYPES`). `false` for an unknown type.   |
+| `getDrawingTool()`                      | Active tool or `null`.                                                  |
+| `addDrawing(input)`                     | Returns the id. `DrawingInput`: `type`, `anchors`, `style?`, `locked?`. |
+| `updateDrawing(id, patch)`              | `DrawingPatch`: `anchors`, `style`, `locked`.                           |
+| `removeDrawing(id)`                     |                                                                         |
+| `setDrawings(inputs)` / `getDrawings()` | Replace all / copies in z-order.                                        |
+| `selectDrawing(id \| null)`             | `getSelectedDrawingId()` returns the id or `null`.                      |
+| `subscribeDrawings(listener)`           | Drawings, selection or tool changed.                                    |
+
+- Types: `trendLine`, `horizontalLine`, `horizontalRay` (1 anchor each for the
+  horizontal ones), `rectangle`, `fibRetracement` (`FIB_LEVELS`) — see
+  `DRAWING_ANCHOR_COUNT`.
+- Anchors are `{ time, price }` (data space), so drawings follow pan / zoom
+  and survive history prepends. Times beyond the last bar extrapolate by
+  the bar interval.
+- Gestures: with a tool active, each tap adds an anchor (the second tap
+  completes the drawing, which becomes selected; the tool turns off unless
+  `trading.keepDrawingTool`). Without a tool, a tap selects the drawing
+  under the finger (or clears the selection); dragging the selected
+  drawing moves it, dragging one of its handles edits that anchor. Locked
+  drawings can be selected but not moved.
+- Persistence: `getSettings()` includes `drawings`; `applySettings` restores
+  them (a payload without `drawings` leaves them untouched).
+  `deserializeChartSettings` validates each drawing and reports issues such
+  as `drawings[1].type: unknown drawing type`.

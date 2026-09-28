@@ -15,7 +15,7 @@ Each phase is implemented by one agent on its own branch/worktree, then merged i
 | P8  | Performance: allocation audit, path/picture cache, text audit, layer invalidation, pixel-bucket conflation, indicator downsampling, benchmark scenes A–D, 100k dataset                       | §17.5, §23.3, §28, Phase 17–18 | done    |
 | P9  | Precision, hardening, API stabilization: price precision/tick size, timezone, session gaps, invalid numeric guards, error boundaries, telemetry hooks, public types, README/docs             | §25–26, Phase 19–21            | done    |
 | P10 | Advanced indicators: VWAP, Stoch RSI, Stochastic, OBV, MFI, CCI, ADX, Ichimoku, Donchian, Keltner, Supertrend                                                                                | §2.3, Phase 23                 | done    |
-| P11 | Trading features: order markers, position overlay, TP/SL lines, annotations, basic drawing engine (trend line, horizontal line)                                                              | Phase 22                       | pending |
+| P11 | Trading features: order markers, position overlay, TP/SL lines, annotations, basic drawing engine (trend line, horizontal line)                                                              | Phase 22                       | done    |
 
 ## Global rules for every phase
 

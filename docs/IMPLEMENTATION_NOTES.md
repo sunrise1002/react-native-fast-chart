@@ -2000,3 +2000,152 @@ and migration notes are in [`CHANGELOG.md`](../CHANGELOG.md).
   `render/skia/indicatorDrawing.ts` (313) are above the 300-line
   guideline. Splitting the engine's context and scheduling code out is a
   candidate follow-up.
+
+## P11 — Trading features
+
+### What was built
+
+- **Pure model** (`src/trading/`, no Skia or React imports, spec §33):
+  - `TradingTypes`: price line, order, fill, position and annotation
+    inputs, and `OverlayDragEvent`;
+  - `OverlayValidation`: finite prices, known sides and styles; bad list
+    entries are dropped;
+  - `DrawingModel` / `DrawingCollection`: five tools (`trendLine`,
+    `horizontalLine`, `horizontalRay`, `rectangle`, `fibRetracement`),
+    data-space anchors `{ time, price }`, selection, the active tool and
+    the tap-tap draft;
+  - `TimeAnchor`: time ↔ bar index, with extrapolation by the bar interval
+    before the first / after the last bar;
+  - `PositionMath`: unrealized PnL and PnL %;
+  - `DrawingGeometry`, `MarkerGeometry`, `HitTest`, `DrawingDrag`:
+    projection, segment clipping, Fibonacci levels, marker placement,
+    distance / handle hit tests, move and anchor-edit math;
+  - `SceneCompiler` / `OverlayScene`: compiles every collection into one
+    immutable `OverlayScene` (lines, markers sorted by time, vertical
+    lines, notes, drawings, position, palette);
+  - `TradingOverlayStore`: the JS-thread source of truth (versioned scene,
+    drag / drawing listeners).
+- **Engine / UI thread:**
+  - `TradingState`: `tradingScene`, `tradingUi` (drag override, selection,
+    draft) and `tradingHits` (label boxes drawn this frame) shared values;
+    `connectTradingToUi` pushes each new scene with `scheduleOnUI`;
+  - `TradingActions` (touch-down hit test, drag update / end) and
+    `TradingTapActions` (tap-tap creation, selection) — worklets.
+- **Rendering:** `useTradingLayer` records one Skia picture per frame:
+  - PnL area, drawings, vertical lines, notes;
+  - levels with label boxes and axis badges;
+  - markers of the visible bars only, one path per palette color.
+  - The picture sits right above the axes layer.
+- **Gestures:** `useTradingGestures` adds:
+  - an overlay drag Pan with manual activation — touch-down hit test,
+    otherwise `fail()`, so pan, pinch and crosshair keep working;
+  - an overlay Tap.
+  - Composition: `Race(overlayDrag, paneResize, Race(crosshair,
+    Simultaneous(pan, pinch, drawingMode ? tap : Exclusive(doubleTap,
+    tap))))`.
+- **Controller:** `ChartTradingMethods` (the base class of
+  `ChartController`) implements `TradingOverlayController`. Other wiring:
+  - `configure` sets the order quantity decimals and `keepDrawingTool`;
+  - `getSettings` / `applySettings` carry drawings;
+  - `dispose` releases the listeners.
+- **Settings:** `ChartSettings.drawings` (optional, version still 1).
+  `readDrawingSettings` validates it item by item, with path-based issues.
+- **Config and theme:**
+  - `config.trading`: `dragEnabled`, `hitSlop`, `keepDrawingTool`;
+  - `theme.trading` (`ChartTradingTheme`), completed by
+    `defaultTradingTheme`;
+  - `interactionTickSize(precision)` gives the drag / draft snap step.
+- **Example:** a "Trading" tab with:
+  - mock orders, fills, a position, annotations and a draggable alert;
+  - live TP / SL values;
+  - a drawing toolbar (tools, delete, save / restore).
+
+### Design decisions
+
+- **Compile on change, draw per frame.** Overlay changes are rare, so the
+  JS thread compiles a flat scene, with colors as palette indices and
+  `@key` references into `theme.trading`. The UI worklet only walks
+  arrays: no React state, no per-item allocations, and one picture node
+  whatever the item count.
+- **Drag without a JS round trip.** A drag writes `dragKey` / `dragPrice`
+  (or `dragAnchors`) into `tradingUi`, which the renderer applies as an
+  override. JS hears about it through `scheduleOnRN` only when the snapped
+  price changes (`change`), and once on release (`commit`). On commit the
+  store writes the price first, so the scene never flashes back to the
+  old value.
+- **Hit map written by the renderer.** Label boxes depend on text width
+  and clamping. The renderer stores each line's `y` and box span in
+  `tradingHits` (tagged with the scene version), so hit tests match what
+  is on screen.
+- **Grab handles, not whole lines.** Lines are grabbed only on the label
+  box or the axis badge, so a full-width TP line never blocks panning.
+  Drawings are movable only once selected.
+- **Data-space anchors.** Drawings, fills and annotations use times, not
+  indices, so history prepends do not shift them. Persisted drawings are
+  plain JSON.
+- **Errors.** List setters drop invalid entries and return the accepted
+  count; single-item methods throw (`RangeError` for a non-finite price
+  line price, `Error` for an invalid drawing), in line with P9's policy
+  for programmer errors. `clearOverlays` keeps the user's drawings.
+
+### Public API added
+
+- **Controller:**
+  - price lines: `addPriceLine`, `updatePriceLine`, `removePriceLine`,
+    `getPriceLines`;
+  - `setOrders` / `getOrders`, `setFills` / `getFills`, `setPosition` /
+    `getPosition`, `setAnnotations` / `getAnnotations`;
+  - `clearOverlays`, `subscribeOverlayDrag`;
+  - drawing tool: `setDrawingTool`, `getDrawingTool`;
+  - drawings: `addDrawing`, `updateDrawing`, `removeDrawing`,
+    `setDrawings`, `getDrawings`, `selectDrawing`,
+    `getSelectedDrawingId`, `subscribeDrawings`.
+- **Components, config, settings:** the `onOverlayDrag` prop,
+  `config.trading`, `theme.trading` and `ChartSettings.drawings`.
+- **Runtime exports:**
+  - main entry: `defaultTradingTheme`, `DRAWING_TYPES`,
+    `DRAWING_ANCHOR_COUNT`, `FIB_LEVELS`;
+  - testing entry: `TRADING_GESTURE_TEST_IDS`.
+- **Types:** the input / event types above, `PriceLinePatch`,
+  `Drawing*`, `ChartTradingConfig`, `ChartTradingTheme` and
+  `TradingOverlayController`.
+
+### Tests
+
+- **Pure layer:** TimeAnchor, PositionMath, DrawingDrag, MarkerGeometry,
+  DrawingGeometry, HitTest, DrawingModel, OverlayValidation,
+  SceneCompiler, DrawingCollection, TradingOverlayStore, TradingTheme.
+- **Engine:** TradingActions, TradingState, ChartControllerTrading.
+- **Render:** `tradingLayer` (Skia mock ops).
+- **Interaction:** `tradingGestures`. Handlers are called directly with a
+  fake state manager, covering:
+  - drag activate / fail, snapped `change` and one `commit`;
+  - drawing select and move, tap-tap creation;
+  - `dragEnabled: false` and the composition.
+- **Settings:** DrawingSettings (round trip, issues).
+- **Extended suites:** ConfigSanitize (CS16), SymbolPrecision, index,
+  TradingChart.
+- **Counts:** 2776 tests in 141 suites (P10: 2399 in 123).
+  - Coverage: 99.85 % statements, 99.14 % branches, 99.66 % functions,
+    99.84 % lines.
+  - `src/trading`: 100 % statements / lines, 99.3 % branches.
+  - Engine, gesture and settings modules: 100 %.
+  - Uncovered branches in the Skia layer (`tradingLevels`,
+    `tradingDrawing`, about 85 % branches) are defensive guards:
+    non-finite projected coordinates or PnL, a marker time with no bar,
+    and anchors that fail to project.
+
+### Known limitations / follow-ups
+
+- **Price pane only.** Overlays are drawn on the price pane with the
+  linear price scale, which is the only scale mode today.
+- **No undo / redo** and no drawing styles editor UI. Styles are set
+  through `updateDrawing`.
+- **One hit slop.** `hitSlop` is shared by lines and drawings. Very
+  dense order books can make neighbouring labels overlap; the topmost
+  line wins.
+- **Fill markers** show no quantity text; use annotations of type
+  `marker` for custom labels.
+- **File size.** `SceneCompiler.ts` (317 lines) and
+  `render/skia/tradingDrawing.ts` (302) are slightly above the 300-line
+  guideline.

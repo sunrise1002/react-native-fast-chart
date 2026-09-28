@@ -40,6 +40,29 @@ breaking change.
 
 ### Added
 
+- **Trading overlays** (see [docs/API.md §9](docs/API.md#9-trading-overlays-and-drawings)):
+  - price lines: `addPriceLine`, `updatePriceLine`, `removePriceLine`,
+    `getPriceLines`;
+  - open orders as labelled lines (`setOrders`), fills as batched markers
+    (`setFills`);
+  - position overlay (`setPosition`): entry line with live PnL, PnL area,
+    liquidation line, TP / SL;
+  - annotations (`setAnnotations`): horizontal / vertical lines, notes,
+    event markers;
+  - UI-thread drag of TP / SL, draggable orders and price lines, snapped to
+    the tick size, reported through the `onOverlayDrag` prop /
+    `subscribeOverlayDrag` (`change` / `commit`);
+  - `config.trading` (`dragEnabled`, `hitSlop`, `keepDrawingTool`) and
+    `theme.trading` (`ChartTradingTheme`, `defaultTradingTheme`).
+- **Drawing tools** — trend line, horizontal line, horizontal ray,
+  rectangle and Fibonacci retracement: tap-tap creation
+  (`setDrawingTool`), selection, move, anchor editing and delete
+  (`addDrawing`, `updateDrawing`, `removeDrawing`, `setDrawings`,
+  `selectDrawing`, `subscribeDrawings`). Persisted in
+  `ChartSettings.drawings` (optional field, settings version unchanged).
+  New exports: `DRAWING_TYPES`, `DRAWING_ANCHOR_COUNT`, `FIB_LEVELS`;
+  `TRADING_GESTURE_TEST_IDS` in `react-native-fast-chart/testing`.
+
 - **Advanced indicators** — overlays `vwap` (session / week / month anchor
   in the chart zone, std-dev bands), `donchian`, `keltner`, `supertrend`,
   `ichimoku` (shifted spans, future cloud) and `parabolicSar` (dots); panes

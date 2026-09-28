@@ -41,6 +41,12 @@ It aims for TradingView / Binance-app UX at 60–120 fps with 100k+ candles.
   - Compact volumes (K/M/B).
   - Local, UTC, fixed-offset or IANA time zones.
   - Session gaps collapse, because the X axis is index-based.
+- **Trading overlays and drawings**
+  - Price lines, open orders, fill markers, position with live PnL,
+    liquidation line and annotations.
+  - TP / SL and order lines drag on the UI thread, snapped to the tick size.
+  - Trend line, horizontal line / ray, rectangle and Fibonacci drawings,
+    persisted with the chart settings.
 - **Production hardening**
   - Error boundary with a fallback.
   - Sanitized input: NaN and ∞ never reach Skia.
@@ -288,6 +294,32 @@ Built-in indicators (defaults and formulas follow TradingView):
   `config` error. Check support with `isSupportedTimeZone`.
 - **Session gaps.** The X axis is index-based, so weekends and overnight
   closures take no space.
+
+## Trading overlays and drawings
+
+```tsx
+const chart = useTradingChartController();
+
+chart.setOrders([{ id: 'o1', side: 'buy', price: 64_200, quantity: 0.25 }]);
+chart.setPosition({
+  side: 'long',
+  size: 0.5,
+  entryPrice: 64_000,
+  takeProfit: 66_000,
+  stopLoss: 63_000,
+});
+chart.setDrawingTool('trendLine'); // next two taps create a trend line
+
+<TradingChart
+  controller={chart}
+  onOverlayDrag={(e) => {
+    if (e.phase === 'commit') amendTpSl(e.target, e.price); // your backend call
+  }}
+/>;
+```
+
+See [docs/API.md §9](docs/API.md#9-trading-overlays-and-drawings) for the
+full API.
 
 ## Error handling and telemetry
 
